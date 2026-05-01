@@ -1,0 +1,1324 @@
+<!doctype html>
+<!--
+دليل سريع لتعديل الملف يدوياً:
+1) لا تغير IDs الخاصة بالعناصر مثل fromDate / toDate / branchFilter لأنها مرتبطة بالـ JavaScript.
+2) أهم الحسابات موجودة في: clientSummary(), metrics(), scoreRows(), totalScore().
+3) معادلة النزول الحالية داخل clientSummary(): أول وزن داخل الفترة - آخر وزن داخل الفترة.
+4) الشهر المجاني: أي رقم/ID يبدأ بـ 3333، ويتم فصله عن KPIs العامة.
+5) أي رقم يبدأ بـ 2222 يتم استبعاده بالكامل من الحسابات.
+6) الزيارة الصحيحة: الفرق بين الزيارة والسابقة 6 أيام أو أكثر.
+7) نفس العميل مع أخصائي مختلف يحسب كـ عميل × أخصائي منفصل.
+-->
+
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Specialist Evaluation Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+/* ===== CSS: تنسيق شكل لوحة التحكم فقط. تعديل هذه المنطقة يؤثر على الشكل والألوان والمسافات ولا يغير الحسابات. ===== */
+:root{--bg:#f4f7f6;--card:#fff;--ink:#15231f;--muted:#66736f;--line:#dfe8e4;--green:#0f9b6d;--green2:#0b7a56;--soft:#e8f7f1;--red:#d64545;--amber:#d79822;--blue:#2563eb;--shadow:0 16px 40px rgba(21,35,31,.08);--radius:22px}*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#eef8f4,#f7f7f5 35%,#f4f7f6);font-family:"Segoe UI",Tahoma,Arial,sans-serif;color:var(--ink)}button,input,select,textarea{font-family:inherit}.app{max-width:1500px;margin:auto;padding:24px}.hero{background:radial-gradient(circle at 10% 20%,rgba(255,255,255,.35),transparent 30%),linear-gradient(135deg,#06734f,#12a777 60%,#7ccf57);border-radius:30px;padding:26px;color:#fff;box-shadow:var(--shadow);display:grid;grid-template-columns:1.3fr .7fr;gap:20px;align-items:center}.hero h1{margin:0;font-size:32px}.hero p{margin:10px 0 0;color:rgba(255,255,255,.88);line-height:1.7}.hero .pills{display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-start}.pill{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28);padding:9px 13px;border-radius:99px;font-size:13px}.toolbar{margin-top:18px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;display:grid;grid-template-columns:repeat(6,1fr);gap:12px;align-items:end}.field label{display:block;color:var(--muted);font-size:12px;margin:0 0 7px}.field input,.field select{width:100%;height:42px;border:1px solid var(--line);border-radius:14px;padding:0 12px;background:#fff;color:var(--ink);outline:none}.field input:focus,.field select:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(15,155,109,.12)}.btn{height:42px;border:0;border-radius:14px;padding:0 14px;background:var(--green);color:#fff;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:.15s}.btn:hover{background:var(--green2);transform:translateY(-1px)}.btn.secondary{background:#fff;color:var(--ink);border:1px solid var(--line)}.btn.red{background:var(--red)}.btn.amber{background:var(--amber)}.btn.blue{background:var(--blue)}.btn.small{height:32px;border-radius:10px;font-size:12px;padding:0 10px}.grid{display:grid;gap:14px}.stats{margin-top:18px;grid-template-columns:repeat(5,1fr)}.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}.stat{padding:18px;position:relative;overflow:hidden;background:linear-gradient(180deg,#fff,#fbfdfc)}.stat:before{display:none}.stat:after{content:"";position:absolute;top:0;right:0;left:0;height:4px;background:linear-gradient(90deg,var(--green),#8bd26a);opacity:.9}.stat .label{color:var(--muted);font-size:13px}.stat .value{font-size:28px;font-weight:900;margin-top:8px}.stat .hint{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5}.score-wrap{margin-top:18px;display:grid;grid-template-columns:.75fr 1.25fr;gap:14px}.score-card{padding:22px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}.score-circle{width:180px;height:180px;border-radius:50%;background:conic-gradient(var(--green) calc(var(--score)*1%),#e9efec 0);display:grid;place-items:center;margin:8px auto 14px}.score-circle>div{width:136px;height:136px;border-radius:50%;background:white;display:grid;place-items:center;font-size:34px;font-weight:900}.score-table{padding:16px}.tabs{margin-top:18px;display:flex;gap:8px;flex-wrap:wrap}.tab{border:1px solid var(--line);background:#fff;border-radius:14px;padding:11px 14px;cursor:pointer;font-weight:700;color:var(--muted)}.tab.active{background:var(--green);color:#fff;border-color:var(--green)}.panel{display:none;margin-top:14px}.panel.active{display:block}.table-card{overflow:hidden}.table-head{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}.table-head h2{font-size:18px;margin:0}.table-wrap{overflow:auto;max-height:560px}table{width:100%;border-collapse:collapse;min-width:980px}th,td{padding:12px 14px;border-bottom:1px solid #edf2ef;text-align:right;white-space:nowrap}th{position:sticky;top:0;background:#f8fbf9;color:#52615c;font-size:12px;z-index:1}td{font-size:13px}.badge{padding:5px 9px;border-radius:99px;font-size:12px;font-weight:800}.good{background:#e4f8ef;color:#08734f}.bad{background:#ffe8e8;color:#b62626}.warn{background:#fff4d8;color:#9b660a}.neutral{background:#eef2f7;color:#556070}.client-search{display:grid;grid-template-columns:1fr 1.2fr;gap:14px}.client-box{padding:22px}.client-box input{height:54px;font-size:18px;text-align:center;border-radius:18px}.client-result{margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:12px;color:#667085}.client-result b{color:#344054}.timeline{padding:18px}.visit{background:#f8fbf9;border:1px solid var(--line);border-radius:16px;padding:12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}.modal{position:fixed;inset:0;background:rgba(10,20,16,.55);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}.modal.show{display:flex}.modal-card{width:min(1100px,96vw);max-height:90vh;overflow:auto;background:#fff;border-radius:26px;box-shadow:0 30px 100px rgba(0,0,0,.28);padding:20px}.modal-title{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px}.map-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.check-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.check-item{border:1px solid var(--line);border-radius:12px;padding:9px;font-size:13px;background:#fbfdfc}.settings-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:18px}.settings-grid .field{background:#fbfdfc;border:1px solid var(--line);border-radius:16px;padding:12px}.note{background:#fff7e6;border:1px solid #f3d19b;color:#744c08;border-radius:16px;padding:12px;line-height:1.7}.footer-note{margin-top:16px;color:var(--muted);font-size:12px;line-height:1.7}@media(max-width:1100px){.hero,.score-wrap,.client-search{grid-template-columns:1fr}.toolbar,.stats{grid-template-columns:repeat(2,1fr)}.settings-grid,.map-grid,.check-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:900px){#special .grid{grid-template-columns:1fr!important}}@media(max-width:620px){.app{padding:12px}.toolbar,.stats,.settings-grid,.map-grid,.check-grid{grid-template-columns:1fr}.hero h1{font-size:24px}}
+
+select{font-size:14px!important;line-height:1.4!important;min-height:42px!important;appearance:auto;}
+select option{font-size:14px!important;padding:8px 10px;}
+
+
+.ai-shell{display:grid;grid-template-columns:.9fr 1.1fr;gap:14px;align-items:start}.ai-card{padding:18px}.ai-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.ai-chat{height:520px;overflow:auto;background:#fbfdfc;border:1px solid var(--line);border-radius:18px;padding:12px}.ai-msg{padding:12px 14px;border-radius:16px;margin:0 0 10px;line-height:1.75;white-space:pre-wrap}.ai-user{background:#eaf1ff;border:1px solid #d7e4ff}.ai-bot{background:#fff;border:1px solid var(--line)}.ai-system{background:#fff7e6;border:1px solid #f3d19b;color:#744c08}.ai-input-row{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}.ai-textarea{width:100%;min-height:78px;border:1px solid var(--line);border-radius:16px;padding:12px;resize:vertical;outline:none}.ai-textarea:focus{border-color:var(--green);box-shadow:0 0 0 3px rgba(15,155,109,.12)}.ai-mini{font-size:12px;color:var(--muted);line-height:1.7}.ai-kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}.ai-kpi{background:#fbfdfc;border:1px solid var(--line);border-radius:14px;padding:10px}.ai-kpi b{font-size:18px}@media(max-width:1000px){.ai-shell{grid-template-columns:1fr}.ai-chat{height:420px}}
+
+
+.analytics-hero{background:linear-gradient(135deg,#063b2d,#0f9b6d 55%,#8bd26a);color:#fff;border-radius:28px;padding:22px;box-shadow:var(--shadow);display:grid;grid-template-columns:1.15fr .85fr;gap:16px;align-items:center}.analytics-hero h2{margin:0;font-size:26px}.analytics-hero p{margin:8px 0 0;opacity:.9;line-height:1.7}.analytics-grid{display:grid;gap:14px}.analytics-grid.two{grid-template-columns:1fr 1fr}.analytics-grid.three{grid-template-columns:repeat(3,1fr)}.insight-card{background:linear-gradient(180deg,#fff,#fbfdfc);border:1px solid var(--line);border-radius:20px;padding:16px;box-shadow:var(--shadow)}.mini-label{color:var(--muted);font-size:12px;font-weight:700}.mini-value{font-size:26px;font-weight:900;margin-top:6px}.mini-note{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5}.alert-list{display:grid;gap:10px}.alert-box{border:1px solid var(--line);border-radius:18px;padding:14px;background:#fff;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start}.alert-box.critical{border-color:#fecaca;background:#fff7f7}.alert-box.warning{border-color:#fed7aa;background:#fffaf4}.alert-box.success{border-color:#bbf7d0;background:#f7fff9}.alert-icon{font-size:20px}.alert-title{font-weight:900;margin-bottom:3px}.alert-desc{font-size:13px;color:var(--muted);line-height:1.6}.alert-tag{font-size:11px;border-radius:999px;padding:5px 9px;font-weight:800}.alert-tag.critical{background:#fee2e2;color:#b91c1c}.alert-tag.warning{background:#ffedd5;color:#c2410c}.alert-tag.success{background:#dcfce7;color:#166534}.chart-card{padding:18px}.chart-card canvas{max-height:330px}.matrix-table{width:100%;border-collapse:separate;border-spacing:0 8px;min-width:900px}.heat-cell{font-weight:900;text-align:center;border-radius:12px;padding:8px 10px;display:inline-block;min-width:70px}.heat-good{background:#dcfce7;color:#166534}.heat-mid{background:#fef3c7;color:#92400e}.heat-bad{background:#fee2e2;color:#991b1b}.heat-empty{background:#f1f5f9;color:#64748b}.timeline-row{display:flex;gap:8px;align-items:center;margin:10px 0}.timeline-label{width:150px;font-size:13px;font-weight:800}.timeline-track{flex:1;background:#edf2ef;border-radius:999px;height:14px;overflow:hidden}.timeline-fill{height:100%;background:linear-gradient(90deg,var(--green),#7ccf57);border-radius:999px}.comp-delta.up{color:#08734f;font-weight:900}.comp-delta.down{color:#b62626;font-weight:900}.comp-delta.flat{color:#66736f;font-weight:900}@media(max-width:1100px){.analytics-hero,.analytics-grid.two,.analytics-grid.three{grid-template-columns:1fr}}
+
+
+/* UX clarity patch */
+.insight-card, .alert-box, .chart-card, .card .insight-card { color: var(--ink) !important; }
+.analytics-hero .insight-card,
+.analytics-hero .insight-card .mini-label,
+.analytics-hero .insight-card .mini-note,
+.analytics-hero .insight-card .mini-value { color: var(--ink) !important; }
+.analytics-help { margin-top:10px; color:rgba(255,255,255,.92); line-height:1.8; font-size:14px; }
+.ai-opinion-box { border:1px solid #bbf7d0; background:linear-gradient(180deg,#f7fff9,#ffffff); border-radius:18px; padding:14px; display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:start; }
+.ai-opinion-box .alert-title { color:#064e3b; }
+.ai-opinion-box .alert-desc { color:#475467; }
+.explain-list { margin:10px 0 0; padding-right:18px; line-height:1.9; }
+.heat-legend { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+.section-gap{margin-top:14px}
+
+
+/* ===== Modern UI Upgrade 2026: تحسين بصري فقط بدون تغيير المعادلات ===== */
+:root{
+  --bg:#f5f7fb;--surface:#ffffff;--surface-2:#f8fafc;--card:#ffffff;--ink:#0f172a;--muted:#64748b;--line:#e2e8f0;
+  --green:#059669;--green2:#047857;--blue:#2563eb;--red:#dc2626;--amber:#d97706;
+  --shadow:0 20px 50px rgba(15,23,42,.08);--shadow-soft:0 8px 24px rgba(15,23,42,.06);--radius:20px;--focus:0 0 0 4px rgba(5,150,105,.14);
+}
+html{scroll-behavior:smooth}
+body{min-height:100vh;background:radial-gradient(circle at top right,rgba(5,150,105,.14),transparent 32%),radial-gradient(circle at 10% 10%,rgba(37,99,235,.10),transparent 24%),linear-gradient(180deg,#f8fafc 0%,#eef5f2 100%) !important;color:var(--ink) !important}
+.app{max-width:1580px;padding:28px}
+.hero,.analytics-hero{position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.42);box-shadow:0 28px 80px rgba(4,120,87,.20)!important}
+.hero:after,.analytics-hero:after{content:"";position:absolute;inset:auto -80px -120px auto;width:300px;height:300px;border-radius:50%;background:rgba(255,255,255,.16);filter:blur(8px)}
+.hero h1{letter-spacing:-.5px;font-size:34px}.pill{backdrop-filter:blur(14px);background:rgba(255,255,255,.16)!important;border-color:rgba(255,255,255,.28)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}
+.toolbar,.card,.modal-card{background:rgba(255,255,255,.86)!important;backdrop-filter:blur(18px);border:1px solid rgba(226,232,240,.9)!important;box-shadow:var(--shadow-soft)!important}
+.toolbar{position:sticky;top:12px;z-index:20;border-radius:24px!important}.field label{font-weight:800;color:#475569;letter-spacing:.1px}
+.field input,.field select,.ai-textarea{background:#fff!important;border:1px solid #dbe4ee!important;transition:border-color .18s ease,box-shadow .18s ease,transform .18s ease}
+.field input:focus,.field select:focus,.ai-textarea:focus{border-color:var(--green)!important;box-shadow:var(--focus)!important}
+.btn{min-height:42px;border-radius:14px!important;box-shadow:0 10px 22px rgba(5,150,105,.14);transition:transform .18s ease,box-shadow .18s ease,filter .18s ease}
+.btn:hover{transform:translateY(-2px);box-shadow:0 14px 26px rgba(5,150,105,.20);filter:saturate(1.06)}.btn.secondary{box-shadow:none;background:#fff!important;border:1px solid #dbe4ee!important;color:#0f172a!important}
+.stat{border-radius:20px!important;transition:transform .18s ease,box-shadow .18s ease}.stat:hover{transform:translateY(-3px);box-shadow:var(--shadow)!important}.stat .label{font-weight:900;color:#475569}.stat .value{letter-spacing:-.4px;color:#0f172a}
+.tabs{position:sticky;top:92px;z-index:18;padding:8px;margin-inline:-2px;background:rgba(248,250,252,.78);backdrop-filter:blur(16px);border:1px solid rgba(226,232,240,.8);border-radius:18px;overflow:auto;flex-wrap:nowrap}
+.tab{white-space:nowrap;border-radius:13px!important;transition:all .18s ease;background:transparent!important}.tab:hover{background:#eef2f7!important;color:#0f172a!important}.tab.active{background:#059669!important;color:#fff!important;box-shadow:0 10px 24px rgba(5,150,105,.22)}
+.table-head{background:linear-gradient(180deg,#ffffff,#f8fafc);position:sticky;top:0;z-index:2}th{background:#f8fafc!important;color:#475569!important;font-weight:900}tbody tr{transition:background .12s ease}tbody tr:hover{background:#f8fafc}
+.badge{font-weight:900;border:1px solid rgba(0,0,0,.04)}.score-circle{box-shadow:inset 0 0 0 1px rgba(226,232,240,.9),0 20px 45px rgba(5,150,105,.14)}
+.ai-shell{grid-template-columns:.82fr 1.18fr!important}.ai-card{border-radius:24px!important}.ai-chat{background:linear-gradient(180deg,#f8fafc,#ffffff)!important;border-radius:22px!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.7)}
+.ai-msg{border-radius:18px!important;box-shadow:0 4px 14px rgba(15,23,42,.04)}.ai-user{background:#eff6ff!important;border-color:#bfdbfe!important}.ai-bot{background:#ffffff!important;border-color:#dbe4ee!important}.ai-system{background:#fff7ed!important;border-color:#fed7aa!important}
+.ai-provider-bar{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.ai-provider-status{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.ai-provider-dot{width:10px;height:10px;border-radius:50%;background:#cbd5e1;display:inline-block}.ai-provider-dot.ready{background:#10b981;box-shadow:0 0 0 5px rgba(16,185,129,.14)}.ai-provider-dot.missing{background:#ef4444;box-shadow:0 0 0 5px rgba(239,68,68,.12)}
+.ai-code-note{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:16px;padding:12px;line-height:1.8;color:#475569;font-size:12px}
+@media(max-width:900px){.app{padding:14px}.tabs{top:76px}.toolbar{position:relative;top:auto}.ai-provider-bar{grid-template-columns:1fr}}
+
+</style>
+</head>
+<body>
+<!-- ===== واجهة المستخدم HTML: الأزرار، الفلاتر، التبويبات، والنوافذ. تعديلها يؤثر على شكل/أماكن العناصر وقد يكسر ربط JavaScript إذا تغيرت IDs. ===== -->
+<div class="app">
+  <section class="hero">
+    <div><h1>لوحة تقييم أخصائي التغذية</h1><p>نظام ارشادي للوقوف على الوضع الحالي لأخصائي التغذيه تبعاً لاخر تعميم خاص بالتقييم .</p></div>
+    <div class="pills"><span class="pill">CWF Classification</span><span class="pill">100 Marks Score</span><span class="pill">Smart Import Mapping</span><span class="pill">Phone Normalization</span></div>
+  </section>
+
+  <section class="toolbar">
+    <div class="field"><label>من تاريخ</label><input id="fromDate" type="date"></div>
+    <div class="field"><label>إلى تاريخ</label><input id="toDate" type="date"></div>
+    <div class="field"><label>الفرع</label><select id="branchFilter"><option value="all">كل الفروع</option></select></div>
+    <div class="field"><label>الأخصائي</label><select id="specialistFilter"><option value="all">كل الأخصائيين</option></select></div>
+    <div><button class="btn" onclick="document.getElementById('fileInput').click()">استيراد ملف</button><input id="fileInput" type="file" accept=".xlsx,.xls,.csv" hidden></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn secondary" onclick="downloadTemplate()">Template</button><button class="btn blue" onclick="openExportModal()">Export</button><button class="btn red" onclick="resetAll()">Reset</button></div>
+  </section>
+
+  <section class="stats grid" id="topStats"></section>
+
+  <section class="score-wrap">
+    <div class="card score-card"><div class="score-circle" id="scoreCircle" style="--score:0"><div id="scoreNum">0</div></div><h2 style="margin:0">العلامة النهائية</h2><p id="scoreHint" class="footer-note"></p></div>
+    <div class="card score-table"><div class="table-head"><h2>تفصيل علامات التقييم</h2><button class="btn small secondary" onclick="setActiveTab('settings')">تعديل المستهدفات</button></div><div class="table-wrap"><table id="scoreTable"></table></div></div>
+  </section>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="overview">الملخص التنفيذي</button>
+    <button class="tab" data-tab="clients">ملخص العملاء</button>
+    <button class="tab" data-tab="visits">الزيارات</button>
+    <button class="tab" data-tab="search">بحث العميل</button>
+    <button class="tab" data-tab="special">المثالي والتثبيت</button>
+    <button class="tab" data-tab="free">الشهر المجاني</button>
+    <button class="tab" data-tab="inactive">العملاء المنقطعين</button>
+    <button class="tab" data-tab="alerts">التنبيهات الذكية</button>
+    <button class="tab" data-tab="comparisons">المقارنات</button>
+    <button class="tab" data-tab="analytics">Charts Analytics</button>
+    <button class="tab" data-tab="cohort">Cohort Analysis</button>
+    <button class="tab" data-tab="dropoff">Drop-off Analysis</button>
+    <button class="tab" data-tab="debugcalc">تدقيق الحساب</button>
+    <button class="tab" data-tab="aiassistant">AI Assistant</button>
+    <button class="tab" data-tab="settings">الإعدادات والمعايير</button>
+  </nav>
+
+  <section id="overview" class="panel active"></section>
+  <section id="clients" class="panel"></section>
+  <section id="visits" class="panel"></section>
+  <section id="search" class="panel"></section>
+  <section id="special" class="panel"></section>
+  <section id="free" class="panel"></section>
+  <section id="inactive" class="panel"></section>
+  <section id="alerts" class="panel"></section>
+  <section id="comparisons" class="panel"></section>
+  <section id="analytics" class="panel"></section>
+  <section id="cohort" class="panel"></section>
+  <section id="dropoff" class="panel"></section>
+  <section id="debugcalc" class="panel"></section>
+  <section id="aiassistant" class="panel"></section>
+  <section id="settings" class="panel"></section>
+</div>
+
+
+<div id="loginModal" class="modal show">
+  <div class="modal-card" style="width:min(520px,94vw)">
+    <div class="modal-title"><h2 style="margin:0">تسجيل الدخول</h2></div>
+    <div class="note">أدخل كلمة المرور المتطابقة مع Apps Script. بدون كلمة مرور صحيحة لن يتم تحميل أو حفظ البيانات.</div>
+    <div class="field" style="margin-top:14px">
+      <label>كلمة المرور</label>
+      <input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password" onkeydown="if(event.key==='Enter')loginAndLoad()">
+    </div>
+    <div id="loginError" class="footer-note" style="color:#d64545;font-weight:700"></div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button class="btn" onclick="loginAndLoad()">دخول</button>
+    </div>
+  </div>
+</div>
+
+<div id="mapModal" class="modal"><div class="modal-card"><div class="modal-title"><h2 style="margin:0">تعيين أعمدة الملف</h2><button class="btn small secondary" onclick="closeModal('mapModal')">إغلاق</button></div><div class="note">اختار العمود المناسب لكل خانة. لو ملف جهاز الفحص لا يحتوي على اسم، سيتم استكمال الاسم تلقائيًا من أي صف سابق/لاحق لنفس رقم الهاتف.</div><div id="mapFields" class="map-grid" style="margin-top:14px"></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn" onclick="confirmImport()">تأكيد الاستيراد</button><button class="btn secondary" onclick="closeModal('mapModal')">إلغاء</button></div><div id="preview" class="table-wrap" style="margin-top:16px"></div></div></div>
+<div id="exportModal" class="modal"><div class="modal-card"><div class="modal-title"><h2 style="margin:0">تصدير مخصص</h2><button class="btn small secondary" onclick="closeModal('exportModal')">إغلاق</button></div><div class="field"><label>اختر البيانات</label><select id="exportType"><option value="current">التبويب الحالي والفلاتر الحالية</option><option value="clients">ملخص العملاء</option><option value="visits">الزيارات</option><option value="inactive">العملاء المنقطعون</option><option value="free">عملاء الشهر المجاني</option><option value="ideal">عملاء الوزن المثالي</option><option value="stabilized">عملاء تثبيت الوزن</option><option value="scores">علامات التقييم</option></select></div><h3>الأعمدة</h3><div id="exportColumns" class="check-grid"></div><div style="display:flex;gap:10px;margin-top:16px"><button class="btn" onclick="performExport()">تنزيل CSV</button><button class="btn secondary" onclick="closeModal('exportModal')">إلغاء</button></div></div></div>
+
+<script>
+// ===== JavaScript: من هنا تبدأ كل وظائف النظام والحسابات والاستيراد والتصدير والاتصال السحابي. =====
+// ===== المتغيرات العامة الأساسية =====
+// visits: المخزن الرئيسي لكل الزيارات بعد الاستيراد/التحميل. أي تعديل عليه يغير كل الحسابات.
+// pendingRows / pendingHeaders: بيانات مؤقتة أثناء استيراد ملف Excel/CSV قبل التأكيد.
+// activeTab: اسم التبويب الحالي المستخدم في التصدير والعرض.
+let visits=[]; let pendingRows=[]; let pendingHeaders=[]; let activeTab='overview';
+// رابط Google Apps Script المسؤول عن تحميل/حفظ البيانات في Google Sheet. تغييره بدون تحديث Apps Script سيوقف الاتصال السحابي.
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzd7J0-nxulcOUJn5RN3QanNtxKHGZnMTJLp2ADVaeNMFuURiT80sbFByQrfSYHPimFWQ/exec';
+/* Connected Web App Deployment: AKfycbzd7J0-nxulcOUJn5RN3QanNtxKHGZnMTJLp2ADVaeNMFuURiT80sbFByQrfSYHPimFWQ */
+// توكن حماية بسيط يتم إرساله مع كل طلب لـ Apps Script. يجب أن يطابق التوكن الموجود في Apps Script.
+const API_TOKEN = 'NUTRI_EVAL_2026_TOKEN_CHANGE_ME';
+// كلمة مرور المستخدم محفوظة مؤقتاً في sessionStorage حتى لا يضطر لإدخالها في نفس الجلسة.
+let USER_PASSWORD = sessionStorage.getItem('nutriUserPassword') || '';
+// يمنع الحفظ التلقائي أثناء التحميل من Google Sheet حتى لا يحدث overwrite بالخطأ.
+let isLoadingFromCloud = false;
+// ===== الإعدادات الافتراضية للتقييم =====
+// كل target هو المستهدف، وكل marks هو وزن العلامة. تعديل أي رقم هنا يغير حساب العلامات النهائية إذا لم توجد إعدادات محفوظة.
+const defaults={targetClients:190,marksClients:13,marksKg:7,targetAvgVisits:9.5,marksAvgVisits:15,targetHighPct:6.5,marksHighPct:15,targetLeanPct:5,marksLeanPct:10,targetWeekly60:1.1,marksWeekly60:12,targetIdealPct:15,marksIdeal:5,targetStablePct:25,marksStable:3,targetFreeCount:20,marksFreeCount:2,targetFreePct:6,marksFreePct:2,manualScientific:0,manualAdmin:0,manualStories:0,manualFreeScan:0,penaltyViolations:0,penaltyDelay:0,penaltyPermission:0,penaltyAbsence:0,inactiveDays:45,branchFactor:1,annualLeaveDays:0,evaluationDays:184};
+// تحميل الإعدادات المحفوظة من الجهاز، وإذا غير موجودة يستخدم defaults.
+let settings=JSON.parse(localStorage.getItem('nutriSettings')||'null')||defaults;
+// أسماء الأعمدة البديلة المستخدمة للتخمين التلقائي عند استيراد Excel/CSV.
+const aliases={date:['date','تاريخ','visit date','measurement date','created','التاريخ'],phone:['phone','mobile','phone no','رقم','telephone','موبايل','mobile number','رقم الهاتف','tel'],id:['id','client id','customer id','member id','scan id','رقم العضوية','كود','اي دي','ID'],name:['name','client','customer','الاسم','اسم العميل','member name'],specialist:['specialist','staff','staff name','nutritionist','اخصائي','الأخصائي','اسم الاخصائي'],branch:['branch','store','store name','فرع','الفرع'],weight:['weight','وزن','body weight','kg'],height:['height','طول','stature','cm'],visitType:['visit type','نوع الزيارة'],isFree:['free','مجاني','free month','الشهر المجاني'],program:['program','برنامج'],products:['products','منتجات'],notes:['notes','ملاحظات']};
+
+// يعرض حالة الاتصال أو الحفظ السحابي للمستخدم، ويتغير اللون حسب وجود خطأ.
+function setCloudStatus(msg, isError=false){
+  const el=document.getElementById('cloudStatus');
+  if(el){el.textContent=msg||'';el.style.color=isError?'#d64545':'#0b7a56';}
+}
+// يجهز زيارة قادمة من Google Sheet: يحول التاريخ، الرقم، الوزن، الطول، ويحدد الشهر المجاني.
+function normalizeCloudVisit(v){
+  let out={...v};
+  out.date=parseDate(out.date);
+  out.phone=String(out.phone||'');
+  out.clientId=String(out.clientId||'');
+  out.phoneKey=String(out.phoneKey||normPhone(out.phone)||normPhone(out.clientId)||'');
+  out.name=String(out.name||'').trim()||'Unknown';
+  out.specialist=String(out.specialist||'').trim();
+  out.branch=String(out.branch||'').trim();
+  out.weight=num(out.weight);
+  out.height=num(out.height);
+  out.visitType=String(out.visitType||'').trim();
+  out.isFree=(out.isFree===true)||String(out.isFree||'').toLowerCase()==='true'||String(out.isFree||'').toLowerCase()==='yes'||String(out.isFree||'').includes('نعم')||String(out.isFree||'').includes('مجاني')||isFreeMonthCode(out.phone)||isFreeMonthCode(out.clientId);
+  out.program=String(out.program||'');
+  out.products=String(out.products||'');
+  out.notes=String(out.notes||'');
+  return out;
+}
+// طلب قراءة من Google Apps Script باستخدام action + token + password.
+async function apiGet(action){
+  const url=GOOGLE_SCRIPT_URL+'?action='+encodeURIComponent(action)+'&token='+encodeURIComponent(API_TOKEN)+'&password='+encodeURIComponent(USER_PASSWORD)+'&ts='+Date.now();
+  const res=await fetch(url,{cache:'no-store'});
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const data=await res.json();
+  if(!data.ok) throw new Error(data.error||'Unauthorized');
+  return data;
+}
+// طلب حفظ/تعديل إلى Google Apps Script ويرسل البيانات في body بصيغة JSON.
+async function apiPost(action,payload={}){
+  const res=await fetch(GOOGLE_SCRIPT_URL,{method:'POST',body:JSON.stringify({action,token:API_TOKEN,password:USER_PASSWORD,...payload})});
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  const data=await res.json();
+  if(!data.ok) throw new Error(data.error||'Unauthorized');
+  return data;
+}
+// تسجيل الدخول: يحفظ كلمة المرور مؤقتاً ثم يحمل البيانات من Google Sheet ويغلق نافذة الدخول.
+async function loginAndLoad(){
+  const pass=(document.getElementById('loginPassword')?.value||'').trim();
+  const err=document.getElementById('loginError');
+  if(err) err.textContent='';
+  if(!pass){ if(err)err.textContent='اكتب كلمة المرور أولاً'; return; }
+  USER_PASSWORD=pass;
+  sessionStorage.setItem('nutriUserPassword',USER_PASSWORD);
+  try{
+    // تحميل البيانات بعد تسجيل الدخول.
+    // التعديل هنا يؤثر على أول خطوة بعد إدخال كلمة المرور فقط، وليس على معادلات التقييم.
+    await load();
+    closeModal('loginModal');
+  }catch(e){
+    console.error(e);
+    sessionStorage.removeItem('nutriUserPassword');
+    if(err) err.textContent='كلمة المرور غير صحيحة أو Apps Script لم يتم تحديثه بالكود الجديد.';
+    setCloudStatus('فشل تسجيل الدخول: '+e.message,true);
+  }
+}
+// تحميل كل الزيارات من Google Sheet ثم تنظيفها واستبعاد الأكواد المحظورة.
+async function loadFromGoogleSheet(){
+  if(!USER_PASSWORD) throw new Error('Password required');
+  setCloudStatus('جاري تحميل البيانات من النظام...');
+  const data=await apiGet('getVisits');
+  const rows=Array.isArray(data.visits)?data.visits:[];
+  visits=rows.map(normalizeCloudVisit).filter(v=>v.date&&v.phoneKey&&v.weight!=null&&!isBlockedClientVisit(v));
+  localStorage.setItem('nutriVisits',JSON.stringify(visits));
+  setCloudStatus('تم تحميل البيانات من النظام');
+}
+// حفظ visits الحالية في Google Sheet. لا يعمل أثناء التحميل حتى لا يحفظ بيانات ناقصة.
+async function saveToGoogleSheet(){
+  if(isLoadingFromCloud || !USER_PASSWORD) return;
+  try{
+    setCloudStatus('جاري الحفظ في النظام...');
+    await apiPost('saveVisits',{visits});
+    setCloudStatus('');
+  }catch(e){
+    console.error(e);
+    setCloudStatus('تعذر الحفظ في النظام: '+e.message,true);
+    alert('تعذر الحفظ في النظام: '+e.message);
+  }
+}
+// أرشفة ومسح البيانات الحالية من Google Sheet بعد تأكيد المستخدم.
+async function resetWithArchiveToGoogleSheet(){
+  if(!USER_PASSWORD){alert('سجل الدخول أولاً');return;}
+  if(!confirm('سيتم مسح الذاكره تماما, هل انت متأكد')) return;
+  try{
+    setCloudStatus('جاري أرشفة البيانات القديمة...');
+    const data=await apiPost('resetVisitsArchive',{});
+    visits=[];
+    localStorage.setItem('nutriVisits',JSON.stringify(visits));
+    render();
+    setCloudStatus('تمت الأرشفة بنجاح. عدد الصفوف المؤرشفة: '+(data.archived||0));
+  }catch(e){
+    console.error(e);
+    setCloudStatus('فشل reset/archive: '+e.message,true);
+    alert('فشل reset/archive: '+e.message);
+  }
+}
+
+
+// تنظيف قائمة الزيارات: توحيد شكل السجل واستبعاد أي سجل ناقص أو رقم يبدأ بـ 2222.
+function sanitizeVisitsList(list){
+  return (list || [])
+    .map(normalizeVisitRecord)
+    .filter(v => v.phoneKey && v.date && v.weight !== null && !isBlocked2222Code(v.phone) && !isBlocked2222Code(v.clientId));
+}
+
+
+// يستخدم بعد الحذف أو التعديل: ينظف البيانات ثم يحفظ ثم يعيد رسم الشاشة.
+function refreshAfterDataChange(){
+  visits = sanitizeVisitsList(visits);
+  save();
+  render();
+}
+
+// يحفظ البيانات محلياً في localStorage ثم يحاول حفظها سحابياً في Google Sheet.
+function save(){
+  visits = sanitizeVisitsList(visits);
+  localStorage.setItem('nutriVisits',JSON.stringify(visits));
+  localStorage.setItem('nutriSettings',JSON.stringify(settings));
+  saveToGoogleSheet();
+}
+
+
+// يستدعي Apps Script لعمل أرشفة Reset للزيارات.
+async function resetVisitsArchive(){
+  const res = await fetch(GOOGLE_SCRIPT_URL, {
+    method:'POST',
+    body: JSON.stringify({
+      action:'resetVisitsArchive',
+      token:API_TOKEN,
+      password:USER_PASSWORD
+    })
+  });
+  const result = await res.json();
+  if(!result.ok) throw new Error(result.error || 'Reset failed');
+  return result;
+}
+
+// عند فتح النظام: يطلب أرشفة البيانات السحابية ثم يبدأ بذاكرة محلية نظيفة.
+async function archiveAndStartCleanOnOpen(){
+  const res = await fetch(GOOGLE_SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify({
+      action: 'resetVisitsArchive',
+      token: API_TOKEN,
+      password: USER_PASSWORD
+    })
+  });
+  const result = await res.json();
+  if (!result.ok) throw new Error(result.error || 'Archive reset failed');
+  visits = [];
+  localStorage.removeItem('nutriVisits');
+  return result.archived || 0;
+}
+// بداية تحميل النظام: يحدد فترة التقييم الافتراضية ثم يحمل البيانات ويرسم الواجهة.
+async function load(){document.getElementById('fromDate').value='2025-07-01';document.getElementById('toDate').value='2025-12-31';
+  await archiveAndStartCleanOnOpen();isLoadingFromCloud=true;await loadFromGoogleSheet();isLoadingFromCloud=false;render();}
+// بيانات تجريبية قديمة للاختبار فقط، ليست جزءاً من الحسابات إذا لم يتم استدعاؤها.
+function demoData(){return [
+{date:'2025-07-01',phone:'971506002727',phoneKey:'506002727',name:'AMNA ALI',specialist:'OSAMA ZAYTON',branch:'Ajman',weight:78.3,height:165,visitType:'First',isFree:false},{date:'2025-07-12',phone:'0506002727',phoneKey:'506002727',name:'AMNA ALI',specialist:'OSAMA ZAYTON',branch:'Ajman',weight:75.8,height:165,visitType:'Follow-up',isFree:false},{date:'2025-07-24',phone:'506002727',phoneKey:'506002727',name:'AMNA ALI',specialist:'OSAMA ZAYTON',branch:'Ajman',weight:72.1,height:165,visitType:'Follow-up',isFree:false},{date:'2025-08-05',phone:'971506002727',phoneKey:'506002727',name:'AMNA ALI',specialist:'OSAMA ZAYTON',branch:'Ajman',weight:68.3,height:165,visitType:'Follow-up',isFree:false},
+{date:'2025-07-03',phone:'0501112223',phoneKey:'501112223',name:'KHALID SALEM',specialist:'OSAMA ZAYTON',branch:'UAQ',weight:108,height:170,visitType:'First',isFree:false},{date:'2025-07-13',phone:'0501112223',phoneKey:'501112223',name:'KHALID SALEM',specialist:'OSAMA ZAYTON',branch:'UAQ',weight:104,height:170,visitType:'Follow-up',isFree:false},{date:'2025-08-01',phone:'0501112223',phoneKey:'501112223',name:'KHALID SALEM',specialist:'OSAMA ZAYTON',branch:'UAQ',weight:99,height:170,visitType:'Follow-up',isFree:false},{date:'2025-08-22',phone:'0501112223',phoneKey:'501112223',name:'KHALID SALEM',specialist:'OSAMA ZAYTON',branch:'UAQ',weight:96,height:170,visitType:'Follow-up',isFree:false},
+{date:'2025-09-01',phone:'0504443332',phoneKey:'504443332',name:'MAYA NABIL',specialist:'NOURA',branch:'Sharjah',weight:63,height:170,visitType:'First',isFree:false},{date:'2025-09-10',phone:'0504443332',phoneKey:'504443332',name:'MAYA NABIL',specialist:'NOURA',branch:'Sharjah',weight:62,height:170,visitType:'Follow-up',isFree:false},
+{date:'2025-07-05',phone:'0507778889',phoneKey:'507778889',name:'FREE CLIENT',specialist:'NOURA',branch:'Sharjah',weight:90,height:160,visitType:'First',isFree:true},{date:'2025-07-14',phone:'0507778889',phoneKey:'507778889',name:'FREE CLIENT',specialist:'NOURA',branch:'Sharjah',weight:87,height:160,visitType:'Follow-up',isFree:true},{date:'2025-07-22',phone:'0507778889',phoneKey:'507778889',name:'FREE CLIENT',specialist:'NOURA',branch:'Sharjah',weight:85,height:160,visitType:'Follow-up',isFree:true}
+];}
+// توحيد رقم الهاتف: إزالة الرموز، 00971/971/0، ثم الاحتفاظ بآخر 9 أرقام عند الحاجة.
+function normPhone(v){let s=String(v??'').trim(); if(!s)return''; s=s.replace(/[\s\-()+\.]/g,'').replace(/[^0-9]/g,''); if(s.startsWith('00971'))s=s.slice(5); if(s.startsWith('971'))s=s.slice(3); if(s.startsWith('0'))s=s.slice(1); if(s.length>9 && s.endsWith(s.slice(-9)))s=s.slice(-9); return s;}
+// استخراج الأرقام فقط من أي قيمة نصية.
+function cleanDigits(v){return String(v??'').replace(/[^0-9]/g,'');}
+// يتحقق هل الكود/الرقم محظور ويبدأ بـ 2222 بصيغ مختلفة.
+function isBlockedClientCode(v){let d=cleanDigits(v); let n=normPhone(v); return d.startsWith('2222')||d.startsWith('9712222')||d.startsWith('009712222')||n.startsWith('2222');}
+// يتحقق هل الزيارة تخص عميل محظور من الهاتف أو ID أو phoneKey.
+function isBlockedClientVisit(v){return isBlockedClientCode(v.phone)||isBlockedClientCode(v.clientId)||isBlockedClientCode(v.phoneKey);}
+// نسخة دقيقة لاستبعاد أي رقم يبدأ بـ 2222 بعد إزالة كود الدولة والصفر.
+function isBlocked2222Code(v){
+  let d=cleanDigits(v);
+  if(d.startsWith('00971')) d=d.slice(5);
+  if(d.startsWith('971')) d=d.slice(3);
+  if(d.startsWith('0')) d=d.slice(1);
+  return d.startsWith('2222');
+}
+// يحدد الشهر المجاني إذا الرقم أو ID يبدأ بـ 3333 بعد التطبيع.
+function isFreeMonthCode(v){
+  let d=cleanDigits(v);
+  if(d.startsWith('00971')) d=d.slice(5);
+  if(d.startsWith('971')) d=d.slice(3);
+  if(d.startsWith('0')) d=d.slice(1);
+  return d.startsWith('3333');
+}
+// يحدد هل الزيارة شهر مجاني من الهاتف أو ID أو phoneKey أو علامة isFree.
+function isFreeMonthVisit(v){return isFreeMonthCode(v.phone)||isFreeMonthCode(v.clientId)||isFreeMonthCode(v.phoneKey)||!!v.isFree;}
+// تحويل التاريخ لأي صيغة مقبولة إلى YYYY-MM-DD، ويدعم تواريخ Excel الرقمية.
+function parseDate(v){if(v==null||v==='')return''; if(typeof v==='number'){let d=XLSX.SSF.parse_date_code(v); if(d)return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;} let s=String(v).trim(); let d=new Date(s); if(!isNaN(d))return d.toISOString().slice(0,10); let m=s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/); if(m){let y=m[3].length===2?'20'+m[3]:m[3]; return `${y}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;} return'';}
+// تحويل النص إلى رقم فعلي، ويدعم الفاصلة العشرية ويزيل أي رموز غير رقمية.
+function num(v){if(v==null)return null; let s=String(v).replace(',','.').replace(/[^0-9.\-]/g,''); let n=parseFloat(s); return isNaN(n)?null:n;}
+// تحويل YYYY-MM-DD إلى Date في بداية اليوم.
+function dateObj(s){return new Date(s+'T00:00:00');}
+// حساب عدد الأيام بين تاريخين. مهم في الزيارات الصحيحة والانقطاع.
+function daysBetween(a,b){return Math.round((dateObj(b)-dateObj(a))/86400000);}
+// يحدد هل الزيارة داخل فترة الفلتر من تاريخ/إلى تاريخ.
+function inPeriod(v){let f=document.getElementById('fromDate').value,t=document.getElementById('toDate').value; return (!f||v.date>=f)&&(!t||v.date<=t);}
+// يرجع الزيارات بعد تطبيق فلتر التاريخ والفرع والأخصائي.
+function currentFiltered(){
+  visits = sanitizeVisitsList(visits);
+  let b=document.getElementById('branchFilter').value,sp=document.getElementById('specialistFilter').value;
+  return visits.filter(v=>inPeriod(v)&&(b==='all'||cleanBranch(v.branch)===b)&&(sp==='all'||cleanSpecialist(v.specialist)===sp));
+}
+// يرجع الزيارات بعد فلتر الفرع والأخصائي فقط بدون فلتر التاريخ. يستخدم للمنقطعين.
+function allFilteredNoPeriod(){
+  visits = sanitizeVisitsList(visits);
+  let b=document.getElementById('branchFilter').value,sp=document.getElementById('specialistFilter').value;
+  return visits.filter(v=>(b==='all'||cleanBranch(v.branch)===b)&&(sp==='all'||cleanSpecialist(v.specialist)===sp));
+}
+// مفتاح تجميعي بسيط: رقم العميل + الأخصائي.
+function visitGroupKey(v){return (v.phoneKey||'')+'||'+(v.specialist||'');}
+// يجمع الزيارات حسب عميل × أخصائي. نفس العميل مع أخصائيين مختلفين يحسب كحالتين منفصلتين.
+function group(list){
+  let m=new Map();
+  sanitizeVisitsList(list).forEach(v=>{
+    const sp = cleanSpecialist(v.specialist) || 'Unknown Specialist';
+    const key = v.phoneKey + '|' + sp;
+    if(!m.has(key)) m.set(key,[]);
+    m.get(key).push(v);
+  });
+  return [...m.entries()].map(([key,arr])=>clientSummary(key,arr));
+}
+// يحسب الزيارات الصحيحة فقط: الزيارة التالية لا تُحتسب إلا إذا كان بينها وبين السابقة 6 أيام أو أكثر.
+function validVisits(arr){
+  // الزيارات تُرتب زمنياً، وأي زيارة بعد السابقة بأقل من 6 أيام لا تحتسب كزيارة صحيحة.
+  // تعديل رقم 6 هنا سيغير عدد الزيارات الصحيحة ومتوسط الزيارات وكل شروط المؤهلين.
+  let s=[...arr].sort((a,b)=>a.date.localeCompare(b.date)); let out=[]; for(let v of s){if(!out.length||daysBetween(out[out.length-1].date,v.date)>=6)out.push(v);} return out;}
+// معادلة BMI = الوزن / (الطول بالمتر)^2.
+function bmi(weight,height){return weight&&height?weight/Math.pow(height/100,2):null;}
+// معادلة الوزن الحرج/التصنيف: (الطول - 100) + 10% من الطول.
+function criticalWeight(h){
+  // الوزن الحرج = (الطول - 100) + 10% من الطول.
+  // إذا أول وزن أكبر من هذا الرقم يصنف العميل High، وإلا Lean.
+  return h? (h-100)+(h*0.10):null;}
+// يلخص كل عميل × أخصائي: أول/آخر وزن، أقل وزن، النزول، BMI، التصنيف، وعدد الزيارات.
+function clientSummary(key,arr){
+  let s=sanitizeVisitsList(arr).sort((a,b)=>a.date.localeCompare(b.date));
+  let first=s[0], last=s[s.length-1];
+  let heights=s.map(x=>x.height).filter(Boolean);
+  let h=heights.length?heights[0]:null;
+  let weights=s.map(x=>x.weight).filter(x=>x!==null&&x!==undefined&&!isNaN(x));
+  let firstWeight=first.weight;
+  let lastWeight=last.weight;
+  let minWeight=weights.length?Math.min(...weights):firstWeight;
+  let maxWeight=weights.length?Math.max(...weights):firstWeight;
+  let cw=criticalWeight(h);
+  let cls=(cw!=null&&firstWeight>cw)?'high':'lean';
+
+  // IMPORTANT:
+  // إجمالي النزول داخل الفترة = أول وزن داخل الفترة - آخر وزن داخل الفترة
+  // المعادلة الأساسية للنزول المعتمدة حالياً:
+  // النزول = أول وزن داخل الفترة - آخر وزن داخل الفترة.
+  // Math.max(0, ...) يمنع ظهور نزول سلبي إذا العميل زاد في الوزن؛ الزيادة تتحسب 0 نزول.
+  // لو غيرتها إلى firstWeight - minWeight سيحسب أفضل نزول وصل له العميل وليس وضعه في آخر زيارة.
+  let periodLoss = Math.max(0, Number(firstWeight||0) - Number(lastWeight||0));
+
+  return {
+    key,
+    phone:first.phone||first.phoneKey||key.split('|')[0],
+    name:s.find(x=>x.name&&x.name!=='Unknown')?.name||'Unknown',
+    specialist:cleanSpecialist(last.specialist)||'Unknown Specialist',
+    branch:cleanBranch(last.branch)||'',
+    height:h,
+    visits:s.length,
+    validVisits:validVisits(s).length,
+    firstDate:first.date,
+    lastDate:last.date,
+    firstWeight,
+    minWeight,
+    maxWeight,
+    lastWeight,
+    lossKg:periodLoss,
+    periodLoss,
+    criticalWeight:cw,
+    weightClass:cls,
+    lastBmi:bmi(last.weight,h),
+    all:s
+  };
+}
+// قلب الحسابات: يبني كل مؤشرات الأداء بعد الفلاتر ويستبعد الشهر المجاني من KPIs العامة.
+function metrics(){
+ let rawPeriod=sanitizeVisitsList(currentFiltered());
+ // فصل زيارات الشهر المجاني أولاً حتى لا تدخل في KPIs العامة.
+ let freePeriod=rawPeriod.filter(v=>isFreeClientVisit(v));
+ // الزيارات العامة المستخدمة في حساب التقييم تستبعد الشهر المجاني.
+ let period=rawPeriod.filter(v=>!isFreeClientVisit(v));
+ // تجميع الأداء على مستوى عميل × أخصائي، وليس رقم هاتف فقط.
+ let clients=group(period);
+ // المراجعون الذين يدخلون التقييم العام: لازم زيارتين صحيحتين أو أكثر.
+ let reviewers=clients.filter(c=>c.validVisits>=2);
+ let totalVisits=reviewers.reduce((a,c)=>a+c.validVisits,0);
+ // متوسط الزيارات = إجمالي الزيارات الصحيحة ÷ عدد المراجعين المؤهلين.
+ let avgVisits=reviewers.length?totalVisits/reviewers.length:0;
+ let f=document.getElementById('fromDate').value,t=document.getElementById('toDate').value;
+ let periodDays=(f&&t)?Math.max(1,daysBetween(f,t)+1):1;
+ // متوسط الزيارات اليومية = كل زيارات الفترة ÷ عدد أيام الفترة.
+ let dailyVisits=period.length/periodDays;
+ let high=reviewers.filter(c=>c.weightClass==='high'), lean=reviewers.filter(c=>c.weightClass==='lean');
+ function classCalc(list){let sumFirst=list.reduce((a,c)=>a+(c.firstWeight||0),0), sumMin=list.reduce((a,c)=>a+(c.minWeight||0),0), sumLoss=list.reduce((a,c)=>a+(c.periodLoss||0),0); let pct=sumFirst?((sumFirst-sumMin)/sumFirst)*100:0; return {count:list.length,avgKg:list.length?sumLoss/list.length:0,pct,weekly60:avgWeekly60(list)};}
+ let highCalc=classCalc(high), leanCalc=classCalc(lean);
+ // حساب معدل أول 60 يوم لكل العملاء المؤهلين، وليس للأوزان المرتفعة فقط.
+ // أي استخدام لـ allCalc.weekly60 يعكس أداء جميع العملاء داخل التقييم بعد استبعاد الشهر المجاني.
+ let allCalc=classCalc(reviewers);
+ let allKg=reviewers.reduce((a,c)=>a+c.periodLoss,0);
+ let ideal=reviewers.filter(isIdeal);
+ let stable=reviewers.filter(isStable);
+ let inactive=inactiveClients();
+ let free=group(freePeriod);
+ let freeEligible=free.filter(c=>c.validVisits>=3);
+ let freePct=calcPct(freeEligible);
+ let freeUnderVisits=free.filter(c=>c.validVisits<3);
+ return {period,clients,reviewers,totalClients:reviewers.length,totalAllClients:clients.length,totalVisits,avgVisits,dailyVisits,allKg,high,lean,highCalc,leanCalc,allCalc,ideal,stable,inactive,free,freeEligible,freeUnderVisits,freePct,periodDays};
+}
+// اسم مختصر لاختبار الشهر المجاني.
+function isFreeClientVisit(v){return isFreeMonthVisit(v);}
+// نسبة النزول = (مجموع أول وزن - مجموع أقل وزن) ÷ مجموع أول وزن × 100.
+function calcPct(list){let sf=list.reduce((a,c)=>a+(c.firstWeight||0),0), sm=list.reduce((a,c)=>a+(c.minWeight||0),0); return sf?((sf-sm)/sf)*100:0;}
+// معدل النزول الأسبوعي لأول 60 يوم = النزول داخل أول 60 يوم ÷ عدد الأيام × 7.
+function avgWeekly60(list){let vals=[]; list.forEach(c=>{let start=c.all[0]; let endLimit=new Date(dateObj(start.date)); endLimit.setDate(endLimit.getDate()+60); let within=c.all.filter(v=>dateObj(v.date)<=endLimit); if(within.length>=2){let minW=Math.min(...within.map(v=>v.weight).filter(Boolean)); let lastDate=within.find(v=>v.weight===minW)?.date||within[within.length-1].date; let d=Math.max(1,daysBetween(start.date,lastDate)); vals.push(((start.weight-minW)/d)*7);}}); return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0;}
+// يفحص هل يوجد انقطاع 45 يوم أو أكثر بين زيارتين لنفس العميل.
+function hasGapOver45(c){let s=c.all; for(let i=1;i<s.length;i++) if(daysBetween(s[i-1].date,s[i].date)>=45)return true; return false;}
+// شرط الوزن المثالي: لا يوجد انقطاع 45 يوم + نزول 5 كجم فأكثر + BMI أقل من 26.
+function isIdeal(c){
+  // وزن مثالي: لا انقطاع 45 يوم، نزول 5 كجم أو أكثر، وآخر BMI أقل من 26.
+  return !hasGapOver45(c) && c.periodLoss>=5 && c.lastBmi!=null && c.lastBmi<26;}
+// شرط تثبيت الوزن: آخر 5 زيارات صحيحة كلها BMI أقل من 26.
+function isStable(c){
+  // تثبيت الوزن: لازم 5 زيارات صحيحة على الأقل، وآخر 5 زيارات BMI أقل من 26.
+  let s=validVisits(c.all); if(s.length<5)return false; let valid=s.filter(v=>bmi(v.weight,v.height)!=null); if(valid.length<5)return false; return valid.slice(-5).every(v=>bmi(v.weight,v.height)<26);}
+// العملاء المنقطعون: آخر زيارة مر عليها inactiveDays أو أكثر، بدون التقيد بفترة التاريخ.
+function inactiveClients(){let today=new Date(); let all=group(allFilteredNoPeriod()); return all.filter(c=>Math.floor((today-dateObj(c.lastDate))/86400000)>=Number(settings.inactiveDays||45));}
+// يحسب تفاصيل علامات كل معيار. أغلب المعايير نسبية: المحقق ÷ المستهدف × وزن العلامة.
+function scoreRows(m){
+  // المعادلة النسبية للعلامة:
+  // score = actual ÷ target × mark
+  // مثال: لو المستهدف 190 والمحقق 95 ووزن العلامة 13، يحصل على 6.5.
+  // ملاحظة: لا يوجد cap هنا لمعظم البنود، يعني تجاوز المستهدف قد يعطي أعلى من وزن العلامة إلا لو البند معمول له Math.min.
+  function proportional(actual,target,mark){return target?actual*mark/target:0} let rows=[]; rows.push(['العدد الإجمالي',m.totalClients,settings.targetClients,settings.marksClients,proportional(m.totalClients,settings.targetClients,settings.marksClients)]); rows.push(['عدد الكيلوجرامات المخفضة',m.allKg,'نسبي/مستهدف يدوي',settings.marksKg,settings.marksKg?Math.min(settings.marksKg,settings.marksKg):0]); rows.push(['متوسط الزيارات',m.avgVisits,settings.targetAvgVisits,settings.marksAvgVisits,proportional(m.avgVisits,settings.targetAvgVisits,settings.marksAvgVisits)]); rows.push(['متوسط نسبة نزول الأوزان المرتفعة',m.highCalc.pct,settings.targetHighPct,settings.marksHighPct,proportional(m.highCalc.pct,settings.targetHighPct,settings.marksHighPct)]); rows.push(['متوسط نسبة نزول الأوزان الرشيقة',m.leanCalc.pct,settings.targetLeanPct,settings.marksLeanPct,proportional(m.leanCalc.pct,settings.targetLeanPct,settings.marksLeanPct)]); rows.push(['معدل النزول الأسبوعي أول 60 يوم',m.allCalc.weekly60,settings.targetWeekly60,settings.marksWeekly60,proportional(m.allCalc.weekly60,settings.targetWeekly60,settings.marksWeekly60)]); rows.push(['الوزن المثالي',m.ideal.length,Math.round(m.totalClients*settings.targetIdealPct/100),settings.marksIdeal,proportional(m.ideal.length,Math.max(1,Math.round(m.totalClients*settings.targetIdealPct/100)),settings.marksIdeal)]); rows.push(['تثبيت الوزن',m.stable.length,Math.round(m.totalClients*settings.targetStablePct/100),settings.marksStable,proportional(m.stable.length,Math.max(1,Math.round(m.totalClients*settings.targetStablePct/100)),settings.marksStable)]); rows.push(['عدد عملاء الشهر المجاني',m.freeEligible.length,settings.targetFreeCount,settings.marksFreeCount,proportional(m.freeEligible.length,settings.targetFreeCount,settings.marksFreeCount)]); rows.push(['نسبة نزول الشهر المجاني',m.freePct,settings.targetFreePct,settings.marksFreePct,proportional(m.freePct,settings.targetFreePct,settings.marksFreePct)]); rows.push(['المستوى العلمي',settings.manualScientific,3,3,Math.min(3,Number(settings.manualScientific||0))]); rows.push(['التقييم الإداري',settings.manualAdmin,3,3,Math.min(3,Number(settings.manualAdmin||0))]); rows.push(['قصص النجاح',settings.manualStories,2,2,Math.min(2,Number(settings.manualStories||0))]); rows.push(['الفحص المجاني',settings.manualFreeScan,1,1,Math.min(1,Number(settings.manualFreeScan||0))]); let factor=Number(settings.branchFactor||1); return rows.map(r=>({name:r[0],actual:r[1],target:r[2],mark:Number(r[3]),score:Math.max(0,Number(r[4])||0)}));}
+// يحسب العلامة النهائية: مجموع العلامات + تعويض الإجازة - الخصومات، ثم يضرب في branchFactor.
+function totalScore(m){let rows=scoreRows(m);
+  // raw = مجموع علامات كل المعايير قبل الخصومات أو معامل الفرع.
+  let raw=rows.reduce((a,r)=>a+r.score,0); let penalty=Number(settings.penaltyViolations||0)+Number(settings.penaltyDelay||0)+Number(settings.penaltyPermission||0)+Number(settings.penaltyAbsence||0); let leaveAdd=0;
+ // تعويض الإجازة السنوية: يأخذ أول 10 معايير فقط، ويعوض بنسبة أيام الإجازة من أيام التقييم.
+ // Math.min(35, annualLeaveDays) يعني الحد الأقصى للتعويض 35 يوم.
+ if(settings.annualLeaveDays>0){let affected=rows.slice(0,10).reduce((a,r)=>a+r.score,0); leaveAdd=affected*Math.min(35,settings.annualLeaveDays)/Math.max(1,settings.evaluationDays||184);} // العلامة النهائية = (raw + leaveAdd) × branchFactor - penalty، ولا تقل عن صفر.
+return {rows,raw,penalty,leaveAdd,total:Math.max(0,(raw+leaveAdd)*Number(settings.branchFactor||1)-penalty)};}
+// يعيد بناء كل أجزاء الواجهة بعد أي تغيير في البيانات أو الإعدادات.
+function render(){fillFilters(); let m=metrics(); renderStats(m); renderScore(m); renderOverview(m); renderClients(m); renderVisits(m); renderSearch(); renderSpecial(m); renderFree(m); renderInactive(m); renderAlertsPanel(); renderComparisonsPanel(); renderAnalyticsPanel(); renderCohortPanel(); renderDropoffPanel(); renderDebugCalc(m); if(typeof renderAiAssistant==='function')renderAiAssistant(m); renderSettings();}
+
+// تنظيف النص من الفراغات وتحويل null/undefined لنص فارغ.
+function cleanText(v){ return String(v ?? '').trim(); }
+// تنظيف اسم الأخصائي واستبعاد الرموز الفارغة.
+function cleanSpecialist(v){
+  let s = cleanText(v);
+  if(!s || /^[-–—_.\s]*$/.test(s)) return '';
+  return s;
+}
+// تنظيف اسم الفرع واستبعاد الرموز الفارغة.
+function cleanBranch(v){
+  let s = cleanText(v);
+  if(!s || /^[-–—_.\s]*$/.test(s)) return '';
+  return s;
+}
+// توحيد شكل أي زيارة سواء من ملف أو من السحابة قبل دخولها في الحسابات.
+function normalizeVisitRecord(v){
+  const phone = String(v.phone ?? v.mobile ?? '').trim();
+  const clientId = String(v.clientId ?? v.id ?? '').trim();
+  const phoneKey = v.phoneKey || normPhone(phone || clientId);
+  return {
+    ...v,
+    phone,
+    clientId,
+    phoneKey,
+    name: cleanText(v.name) || 'Unknown',
+    specialist: cleanSpecialist(v.specialist),
+    branch: cleanBranch(v.branch),
+    date: parseDate(v.date) || String(v.date || '').slice(0,10),
+    weight: num(v.weight),
+    height: num(v.height),
+    isFree: isFreeMonthCode(phone) || isFreeMonthCode(clientId) || v.isFree === true || String(v.isFree || '').toLowerCase().includes('yes') || String(v.isFree || '').includes('نعم') || String(v.isFree || '').includes('مجاني')
+  };
+}
+
+// ملء قوائم الفرع والأخصائي تلقائياً من البيانات المتاحة.
+function fillFilters(){
+  let b=document.getElementById('branchFilter'),s=document.getElementById('specialistFilter');
+  let bv=b.value,sv=s.value;
+  visits = sanitizeVisitsList(visits);
+
+  let branches=[...new Set(visits.map(v=>cleanBranch(v.branch)).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  let specs=[...new Set(visits.map(v=>cleanSpecialist(v.specialist)).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+
+  b.innerHTML='<option value="all">كل الفروع</option>'+branches.map(x=>`<option value="${x}">${x}</option>`).join('');
+  s.innerHTML='<option value="all">كل الأخصائيين</option>'+specs.map(x=>`<option value="${x}">${x}</option>`).join('');
+
+  b.value=branches.includes(bv)?bv:'all';
+  s.value=specs.includes(sv)?sv:'all';
+}
+// تنسيق الأرقام للعرض بفواصل عشرية مناسبة.
+function fmt(n,d=1){return (Number(n)||0).toLocaleString('en-US',{maximumFractionDigits:d});}
+// يرسم كروت المؤشرات العلوية مثل العملاء، النزول، المتوسطات، الشهر المجاني.
+function renderStats(m){let arr=[['عدد المراجعين',m.totalClients,'زيارة صحيحة فأكثر داخل الفترة'],['كل العملاء',m.totalAllClients,'زيارة واحدة أو أكثر في الملخص'],['إجمالي النزول',fmt(m.allKg)+' kg','أول وزن داخل الفترة - آخر وزن داخل الفترة'],['متوسط عدد الزيارات',fmt(m.avgVisits),'عدد الزيارات الصحيحة ÷ عدد المراجعين'],['متوسط الزيارات اليومية',fmt(m.dailyVisits),'عدد الزيارات داخل الفترة ÷ عدد أيام الفترة'],['مرتفع %',fmt(m.highCalc.pct)+'%','نسبة النزول المجمعة للأوزان المرتفعة'],['رشيق %',fmt(m.leanCalc.pct)+'%','نسبة النزول المجمعة للأوزان الرشيقة'],['أول 60 يوم',fmt(m.allCalc.weekly60)+' kg/w','لكل العملاء'],['وزن مثالي',m.ideal.length,'نزول ≥ 5 كجم و BMI < 26'],['تثبيت وزن',m.stable.length,'آخر 5 زيارات صحيحة BMI < 26'],['شهر مجاني مؤهل',m.freeEligible.length,'أول 4 أرقام في الهاتف أو ID = 3333 + 3 زيارات فأكثر'],['نزول الشهر المجاني',fmt(m.freePct)+'%','نسبة نزول العملاء المجانيين المؤهلين']]; document.getElementById('topStats').innerHTML=arr.map(x=>`<div class="card stat"><div class="label">${x[0]}</div><div class="value">${x[1]}</div><div class="hint">${x[2]}</div></div>`).join('');}
+// يرسم دائرة العلامة النهائية وجدول تفاصيل التقييم.
+function renderScore(m){let sc=totalScore(m); document.getElementById('scoreCircle').style.setProperty('--score',Math.min(100,sc.total)); document.getElementById('scoreNum').textContent=fmt(sc.total,2); document.getElementById('scoreHint').textContent=`Raw ${fmt(sc.raw,2)} + Leave ${fmt(sc.leaveAdd,2)} - Penalty ${fmt(sc.penalty,2)} × Branch Factor ${settings.branchFactor}`; document.getElementById('scoreTable').innerHTML='<thead><tr><th>المعيار</th><th>المحقق</th><th>المستهدف</th><th>وزن العلامة</th><th>العلامة</th></tr></thead><tbody>'+sc.rows.map(r=>`<tr><td>${r.name}</td><td>${fmt(r.actual,2)}</td><td>${r.target}</td><td>${r.mark}</td><td><b>${fmt(r.score,2)}</b></td></tr>`).join('')+'</tbody>';}
+// قالب HTML موحد لإنشاء الجداول داخل الكروت.
+function table(headers,rows){return `<div class="card table-card"><div class="table-head"><h2>${headers.title||''}</h2><button class="btn small blue" onclick="openExportModal()">Export الحالي</button></div><div class="table-wrap"><table><thead><tr>${headers.cols.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div></div>`}
+// يرسم الملخص التنفيذي والتشخيص السريع.
+function renderOverview(m){document.getElementById('overview').innerHTML=`<div class="grid" style="grid-template-columns:repeat(2,1fr)"><div class="card" style="padding:18px"><h2>تحليل الفئات</h2><p>الأوزان المرتفعة: ${m.high.length} عميل | متوسط كجم: ${fmt(m.highCalc.avgKg)} | نسبة: ${fmt(m.highCalc.pct)}%</p><p>الأوزان الرشيقة: ${m.lean.length} عميل | متوسط كجم: ${fmt(m.leanCalc.avgKg)} | نسبة: ${fmt(m.leanCalc.pct)}%</p><p>معدل أول 60 يوم لكل العملاء: ${fmt(m.allCalc.weekly60)} kg/week</p></div><div class="card" style="padding:18px"><h2>تشخيص سريع</h2><p>${m.avgVisits>=settings.targetAvgVisits?'✅ الاستمرارية جيدة':'⚠️ الاستمرارية أقل من المستهدف'}</p><p>${m.highCalc.pct>=settings.targetHighPct?'✅ نزول الأوزان المرتفعة جيد':'⚠️ نزول الأوزان المرتفعة يحتاج متابعة'}</p><p>${m.inactive.length?'⚠️ يوجد عملاء منقطعون يحتاجون إعادة تنشيط':'✅ لا توجد قائمة انقطاع كبيرة'}</p></div></div>`;}
+// يحول ملخص العملاء إلى صفوف HTML داخل جدول العملاء.
+function clientRows(list){return list.map(c=>`<tr><td>${c.name}</td><td>${c.phone}</td><td>${c.branch}</td><td>${c.specialist}</td><td>${c.height||''}</td><td>${c.visits}</td><td>${c.validVisits}</td><td>${c.firstWeight}</td><td>${c.minWeight}</td><td>${fmt(c.periodLoss)}</td><td>${c.weightClass==='high'?'<span class="badge bad">مرتفع</span>':'<span class="badge good">رشيق</span>'}</td><td>${fmt(c.lastBmi)}</td><td><button class="btn small red" onclick="deleteClient('${c.key}')">حذف</button></td></tr>`).join('')}
+// يعرض جدول ملخص العملاء.
+function renderClients(m){document.getElementById('clients').innerHTML=table({title:'ملخص العملاء: يظهر كل عميل لديه زيارة واحدة أو أكثر',cols:['الاسم','الهاتف','الفرع','الأخصائي','الطول','الزيارات','زيارات صحيحة','أول وزن','أقل وزن','النزول','الفئة','BMI آخر','حذف']},clientRows(m.clients));}
+// يعرض جدول كل الزيارات داخل الفترة الحالية.
+function renderVisits(m){let rows=m.period.map((v,i)=>`<tr><td>${v.date}</td><td>${v.name}</td><td>${v.phone}</td><td>${v.branch}</td><td>${v.specialist}</td><td>${v.height||''}</td><td>${v.weight}</td><td>${isFreeClientVisit(v)?'نعم':'لا'}</td><td><button class="btn small red" onclick="deleteVisit('${v.phoneKey}','${v.date}')">حذف</button></td></tr>`).join(''); document.getElementById('visits').innerHTML=table({title:'كل الزيارات داخل الفترة',cols:['التاريخ','الاسم','الهاتف','الفرع','الأخصائي','الطول','الوزن','شهر مجاني','حذف']},rows);}
+// يرسم واجهة البحث عن عميل برقم الهاتف.
+function renderSearch(){document.getElementById('search').innerHTML=`<div class="client-search"><div class="card client-box"><h2>بحث العميل</h2><input id="searchPhone" placeholder="اكتب رقم الهاتف مثل 971506002727" oninput="doSearch()"><div id="searchResult" class="client-result"></div></div><div class="card timeline"><h2>زيارات العميل</h2><div id="searchTimeline" class="footer-note">ابدأ بالبحث عن رقم الهاتف.</div></div></div>`;}
+// ينفذ البحث عن العميل ويعرض ملخصه وخط زيارته الزمني.
+function doSearch(){let k=normPhone(document.getElementById('searchPhone').value); let arr=visits.filter(v=>!isBlockedClientVisit(v)&&v.phoneKey===k); if(!k||!arr.length){document.getElementById('searchResult').innerHTML='<p>لا توجد نتيجة.</p>';document.getElementById('searchTimeline').innerHTML='';return;} let c=clientSummary(k,arr); document.getElementById('searchResult').innerHTML=`<div><b>الاسم:</b> ${c.name}</div><div><b>الهاتف:</b> ${c.phone}</div><div><b>الأخصائي:</b> ${c.specialist}</div><div><b>الفرع:</b> ${c.branch}</div><div><b>الطول:</b> ${c.height||''}</div><div><b>أول وزن:</b> ${c.firstWeight} kg</div><div><b>أقل وزن:</b> ${c.minWeight} kg</div><div><b>إجمالي النزول:</b> ${fmt(c.lossKg)} kg</div><div><b>عدد الزيارات:</b> ${c.visits}</div><div><b>BMI آخر:</b> ${fmt(c.lastBmi)}</div>`; document.getElementById('searchTimeline').innerHTML=c.all.map(v=>`<div class="visit"><span>${v.date} - ${v.weight} kg</span><button class="btn small red" onclick="deleteVisit('${v.phoneKey}','${v.date}')">حذف</button></div>`).join('');}
+// يعرض عملاء الوزن المثالي وعملاء تثبيت الوزن.
+function renderSpecial(m){let idealRows=m.ideal.map(c=>`<tr><td>وزن مثالي</td><td>${c.name}</td><td>${c.phone}</td><td>${c.branch}</td><td>${c.specialist}</td><td>${fmt(c.periodLoss)}</td><td>${fmt(c.lastBmi)}</td><td>${c.validVisits}</td></tr>`).join(''); let stableRows=m.stable.map(c=>`<tr><td>تثبيت وزن</td><td>${c.name}</td><td>${c.phone}</td><td>${c.branch}</td><td>${c.specialist}</td><td>${fmt(c.periodLoss)}</td><td>${fmt(c.lastBmi)}</td><td>${c.validVisits}</td></tr>`).join(''); document.getElementById('special').innerHTML=`<div class="grid" style="grid-template-columns:1fr 1fr;align-items:start"><div>${table({title:'عملاء الوزن المثالي: نزول 5 كجم فأكثر + BMI أقل من 26',cols:['النوع','الاسم','الهاتف','الفرع','الأخصائي','النزول','BMI','زيارات صحيحة']},idealRows)}</div><div>${table({title:'عملاء تثبيت الوزن: 5 زيارات صحيحة على الأقل و BMI أقل من 26',cols:['النوع','الاسم','الهاتف','الفرع','الأخصائي','النزول','BMI','زيارات صحيحة']},stableRows)}</div></div>`;}
+// يعرض عملاء الشهر المجاني وتصنيف المؤهل/أقل من 3 زيارات.
+function renderFree(m){let rows=m.free.map(c=>`<tr><td>${c.validVisits>=3?'<span class="badge good">مؤهل</span>':'<span class="badge warn">أقل من 3 زيارات</span>'}</td><td>${c.name}</td><td>${c.phone}</td><td>${c.branch}</td><td>${c.specialist}</td><td>${c.validVisits}</td><td>${c.firstWeight}</td><td>${c.minWeight}</td><td>${fmt(c.periodLoss)}</td><td>${fmt(calcPct([c]))}%</td></tr>`).join(''); document.getElementById('free').innerHTML=table({title:'عملاء الشهر المجاني: أول 4 أرقام في الهاتف أو ID = 3333، مطلوب 3 زيارات فأكثر + نزول وزن',cols:['الحالة','الاسم','الهاتف','الفرع','الأخصائي','زيارات صحيحة','أول وزن','أقل وزن','النزول kg','النزول %']},rows);}
+// يعرض العملاء المنقطعين حسب عدد الأيام المحدد في الإعدادات.
+function renderInactive(m){let rows=m.inactive.map(c=>`<tr><td>${c.name}</td><td>${c.phone}</td><td>${c.branch}</td><td>${c.specialist}</td><td>${c.lastDate}</td><td>${Math.floor((new Date()-dateObj(c.lastDate))/86400000)}</td><td>${c.lastWeight}</td><td><button class="btn small red" onclick="deleteClient('${c.key}')">حذف</button></td></tr>`).join(''); document.getElementById('inactive').innerHTML=table({title:`العملاء المنقطعون: ${settings.inactiveDays} يوم أو أكثر`,cols:['الاسم','الهاتف','الفرع','الأخصائي','آخر زيارة','أيام الانقطاع','آخر وزن','حذف']},rows);}
+
+// جدول تدقيق الحساب: يوضح لكل عميل × أخصائي كيف تم حساب النزول والزيارات.
+function renderDebugCalc(m){
+  let rows = m.reviewers.map(c=>{
+    let free = c.all.some(v=>isFreeClientVisit(v)) ? 'نعم' : 'لا';
+    return `<tr><td>${c.name}</td><td>${c.phone}</td><td>${c.specialist}</td><td>${c.branch}</td><td>${c.firstDate}</td><td>${c.lastDate}</td><td>${c.visits}</td><td>${c.validVisits}</td><td>${c.firstWeight}</td><td>${c.minWeight}</td><td><b>${fmt(c.periodLoss)}</b></td><td>${free}</td></tr>`;
+  }).join('');
+  document.getElementById('debugcalc').innerHTML = table({title:'تدقيق الحساب: كل صف = عميل × أخصائي، والشهر المجاني خارج KPIs العامة',cols:['الاسم','الهاتف','الأخصائي','الفرع','أول تاريخ','آخر تاريخ','كل الزيارات','زيارات صحيحة','أول وزن','أقل وزن','النزول: أول وزن - آخر وزن','شهر مجاني']}, rows);
+}
+
+
+let aiChatHistory = JSON.parse(localStorage.getItem('nutriAiChatHistory') || '[]');
+// يقرأ Gemini API Key من sessionStorage أو localStorage.
+function getGeminiApiKey(){ return sessionStorage.getItem('geminiApiKey') || localStorage.getItem('geminiApiKey') || ''; }
+// يحفظ Gemini API Key مؤقتاً أو دائماً حسب اختيار المستخدم.
+function setGeminiApiKey(){ const key=document.getElementById('geminiApiKey')?.value?.trim()||''; const remember=document.getElementById('rememberGeminiKey')?.checked; if(!key||key==='********'){alert('اكتب Gemini API Key الأول');return;} sessionStorage.setItem('geminiApiKey',key); if(remember)localStorage.setItem('geminiApiKey',key); else localStorage.removeItem('geminiApiKey'); renderAiAssistant(metrics()); }
+// يمسح Gemini API Key من الجهاز.
+function clearGeminiApiKey(){ sessionStorage.removeItem('geminiApiKey'); localStorage.removeItem('geminiApiKey'); renderAiAssistant(metrics()); }
+// يمسح تاريخ محادثة AI Assistant.
+function clearAiChat(){ aiChatHistory=[]; localStorage.removeItem('nutriAiChatHistory'); renderAiAssistant(metrics()); }
+// يقلل حجم البيانات المرسلة للذكاء الاصطناعي حتى لا يزيد حجم الطلب.
+function compactRows(rows,limit=100){ return rows.slice(0,limit); }
+// حماية النص المعروض من حقن HTML عند عرض ردود أو رسائل.
+function escapeHtml(str){return String(str??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));}
+// يبني ملخص داتا كامل يرسله للـ AI: الفلاتر، KPIs، العملاء، الشهر المجاني، المنقطعين، الزيارات.
+function buildAiDataContext(){
+ const m=metrics(), score=totalScore(m);
+ const ctx={
+  rules:{blocked2222:'استبعاد كامل لأي رقم يبدأ بـ 2222 أو 9712222',freeMonth:'3333 أو 9713333 شهر مجاني وخارج KPIs العامة',specialist:'الأداء يحسب كعميل × أخصائي بدون خلط'},
+  filters:{from:fromDate.value,to:toDate.value,branch:branchFilter.value,specialist:specialistFilter.value},
+  metrics:{score:score.total,rawScore:score.raw,totalClients:m.totalClients,allClients:m.totalAllClients,totalVisits:m.totalVisits,avgVisits:m.avgVisits,dailyVisits:m.dailyVisits,totalLossKg:m.allKg,highPct:m.highCalc.pct,leanPct:m.leanCalc.pct,weekly60AllClients:m.allCalc.weekly60,ideal:m.ideal.length,stable:m.stable.length,free:m.free.length,freeEligible:m.freeEligible.length,freePct:m.freePct,inactive:m.inactive.length},
+  scoreRows:score.rows,
+  clients:compactRows(m.clients.map(c=>({name:c.name,phone:c.phone,specialist:c.specialist,branch:c.branch,visits:c.visits,validVisits:c.validVisits,firstDate:c.firstDate,lastDate:c.lastDate,firstWeight:c.firstWeight,minWeight:c.minWeight,lastWeight:c.lastWeight,lossKg:c.periodLoss,weightClass:c.weightClass,lastBmi:c.lastBmi})),160),
+  freeMonth:compactRows(m.free.map(c=>({name:c.name,phone:c.phone,specialist:c.specialist,branch:c.branch,validVisits:c.validVisits,firstWeight:c.firstWeight,minWeight:c.minWeight,lossKg:c.periodLoss,eligible:c.validVisits>=3})),120),
+  inactive:compactRows(m.inactive.map(c=>({name:c.name,phone:c.phone,specialist:c.specialist,branch:c.branch,lastDate:c.lastDate,lastWeight:c.lastWeight})),80),
+  visits:compactRows(m.period.map(v=>({date:v.date,name:v.name,phone:v.phone,specialist:v.specialist,branch:v.branch,weight:v.weight,height:v.height})),160)
+ };
+ return ctx;
+}
+// يضع Prompt جاهز في خانة AI حسب نوع التحليل المطلوب.
+function aiQuickPrompt(type){
+ const p={executive:'اعمل ملخص تنفيذي قوي عن الأداء الحالي مع أهم Insights والمخاطر.',action:'اعمل خطة تشغيل 7 أيام لتحسين النتائج بناءً على الداتا.',ranking:'حلل الأخصائيين ونقاط القوة والضعف والتوصيات.',anomalies:'اكتشف أخطاء الداتا أو تضخم الأرقام أو الحالات التي تحتاج مراجعة.',whatsapp:'اكتب رسالة واتساب إدارية قوية ومختصرة للفريق بناءً على النتائج.'};
+ document.getElementById('aiPrompt').value=p[type]||'';
+}
+// يرسم واجهة مساعد Gemini ومؤشرات مختصرة للشات.
+function renderAiAssistant(m){
+ const key=getGeminiApiKey(), score=totalScore(m);
+ const chat=aiChatHistory.length?aiChatHistory.map(x=>`<div class="ai-msg ${x.role==='user'?'ai-user':'ai-bot'}">${escapeHtml(x.text)}</div>`).join(''):`<div class="ai-msg ai-system">احفظ Gemini API Key من الإعدادات أو اكتبه هنا ثم اسأل عن الأداء، النزول، العملاء المنقطعين، الشهر المجاني، أو اطلب رسالة واتساب للفريق.</div>`;
+ document.getElementById('aiassistant').innerHTML=`<div class="ai-shell"><div class="card ai-card"><h2>AI Assistant — Gemini</h2><p class="ai-mini">المساعد يرى الداتا الحالية بعد الفلاتر: KPIs، العملاء، الزيارات، الشهر المجاني، المنقطعين، وتفصيل العلامات.</p><div class="field"><label>Gemini API Key</label><input id="geminiApiKey" type="password" value="${key?'********':''}" placeholder="Paste Gemini API Key"></div><label class="ai-mini" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="rememberGeminiKey" type="checkbox"> حفظ المفتاح على نفس الجهاز</label><div class="ai-actions"><button class="btn small" onclick="setGeminiApiKey()">حفظ المفتاح</button><button class="btn small secondary" onclick="clearGeminiApiKey()">مسح المفتاح</button><button class="btn small red" onclick="clearAiChat()">مسح الشات</button></div><div class="ai-kpi-grid"><div class="ai-kpi"><span class="ai-mini">Score</span><br><b>${fmt(score.total,2)}</b></div><div class="ai-kpi"><span class="ai-mini">إجمالي النزول</span><br><b>${fmt(m.allKg)} kg</b></div><div class="ai-kpi"><span class="ai-mini">متوسط الزيارات</span><br><b>${fmt(m.avgVisits)}</b></div><div class="ai-kpi"><span class="ai-mini">Free Eligible</span><br><b>${m.freeEligible.length}</b></div></div><h3 style="margin-top:16px">أوامر جاهزة</h3><div class="ai-actions"><button class="btn small secondary" onclick="aiQuickPrompt('executive')">ملخص تنفيذي</button><button class="btn small secondary" onclick="aiQuickPrompt('action')">خطة 7 أيام</button><button class="btn small secondary" onclick="aiQuickPrompt('ranking')">تحليل الأخصائيين</button><button class="btn small secondary" onclick="aiQuickPrompt('anomalies')">أخطاء الداتا</button><button class="btn small secondary" onclick="aiQuickPrompt('whatsapp')">رسالة واتساب</button></div><p class="ai-mini" style="margin-top:14px">الأفضل أمنيًا عدم حفظ API Key على جهاز مشترك.</p></div><div class="card ai-card"><div class="ai-chat" id="aiChatBox">${chat}</div><div class="ai-input-row"><textarea id="aiPrompt" class="ai-textarea" placeholder="اسأل المساعد..."></textarea><button class="btn" onclick="askGeminiAi()">إرسال</button></div></div></div>`;
+ setTimeout(()=>{const box=document.getElementById('aiChatBox'); if(box) box.scrollTop=box.scrollHeight;},50);
+}
+
+function cleanAiAnswer(text){
+  let t = String(text || '').trim();
+
+  if(t.startsWith('```json')) {
+    t = t.replace(/^```json\s*/i,'').replace(/```$/,'').trim();
+  }
+
+  if(t.startsWith('```')) {
+    t = t.replace(/^```\s*/,'').replace(/```$/,'').trim();
+  }
+
+  if(/^json\s*\{/i.test(t)) {
+    t = t.replace(/^json\s*/i,'').trim();
+  }
+
+  if(t.startsWith('{') && t.endsWith('}')){
+    try {
+      const obj = JSON.parse(t);
+      return jsonToReadableArabic(obj);
+    } catch(e){}
+  }
+
+  return t;
+}
+
+function jsonToReadableArabic(obj, level=0){
+  if(obj === null || obj === undefined) return '';
+  if(typeof obj !== 'object') return String(obj);
+
+  let out = [];
+  for(const key in obj){
+    const cleanKey = String(key).replace(/_/g,' ');
+    const value = obj[key];
+
+    if(typeof value === 'object' && value !== null){
+      out.push(`${level === 0 ? '##' : '###'} ${cleanKey}`);
+      out.push(jsonToReadableArabic(value, level + 1));
+    } else {
+      out.push(`- ${cleanKey}: ${value}`);
+    }
+  }
+  return out.join('\n').trim();
+}
+
+async function askGeminiAi(){
+ const prompt=document.getElementById('aiPrompt')?.value?.trim(); const input=document.getElementById('geminiApiKey')?.value?.trim(); let key=getGeminiApiKey();
+ if(input&&input!=='********'){sessionStorage.setItem('geminiApiKey',input); key=input;}
+ if(!key){alert('اكتب Gemini API Key الأول');return;} if(!prompt){alert('اكتب السؤال الأول');return;}
+ aiChatHistory.push({role:'user',text:prompt}); aiChatHistory.push({role:'model',text:'جاري التحليل...'}); localStorage.setItem('nutriAiChatHistory',JSON.stringify(aiChatHistory)); renderAiAssistant(metrics());
+ try{
+  const systemText = `
+أنت مستشار إداري محترف داخل Dashboard تقييم أخصائيي التغذية.
+
+ممنوع تمامًا:
+- الرد بصيغة JSON.
+- استخدام code blocks.
+- بدء الرد بـ { أو json.
+- كتابة مفاتيح تقنية مثل تحليل_إداري أو بيانات_الأداء_الشهري.
+
+لازم:
+- تبدأ بإجابة مباشرة وواضحة.
+- تكتب بأسلوب إداري مفهوم.
+- تشرح بالأرقام الموجودة فقط.
+- تستخدم عناوين طبيعية وليس صيغة تقنية.
+
+لو السؤال: "أفضل شهر؟"
+ابدأ هكذا:
+أفضل شهر هو: (اسم الشهر أو YYYY-MM)
+
+ثم وضح:
+1) لماذا؟
+2) مقارنة بسيطة مع الشهور الأخرى
+3) توصية عملية
+
+لا تستخدم JSON نهائيًا تحت أي ظرف.
+`;
+  const body={contents:[{role:'user',parts:[{text:systemText+'\n\nDATA JSON:\n'+JSON.stringify(buildAiDataContext())+'\n\nQUESTION:\n'+prompt + '\n\nصيغة الرد المطلوبة: لا تستخدم JSON إطلاقًا. اكتب إجابة عربية طبيعية بعناوين واضحة. ابدأ بالإجابة المباشرة ثم اشرح السبب بالأرقام.'}]}],generationConfig:{temperature:.35,topP:.9,maxOutputTokens: 6000}};
+  const res=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(body)});
+  const json=await res.json(); if(!res.ok) throw new Error(json.error?.message||'Gemini API error');
+  const ans=json.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('\n')||'لم يتم استلام رد واضح.';
+  aiChatHistory[aiChatHistory.length-1]={role:'model',text:cleanAiAnswer(ans)};
+ }catch(e){aiChatHistory[aiChatHistory.length-1]={role:'model',text:'حدث خطأ في Gemini API: '+(e.message||e)};}
+ localStorage.setItem('nutriAiChatHistory',JSON.stringify(aiChatHistory)); renderAiAssistant(metrics());
+}
+
+
+function saveGeminiKeyFromSettings(){
+  const input = document.getElementById('settingsGeminiKey');
+  const key = input ? input.value.trim() : '';
+  if(!key || key === '********'){
+    alert('اكتب Gemini API Key الأول');
+    return;
+  }
+  localStorage.setItem('geminiApiKey', key);
+  sessionStorage.setItem('geminiApiKey', key);
+  render();
+  alert('تم حفظ Gemini API Key بنجاح');
+}
+
+function clearGeminiKeyFromSettings(){
+  localStorage.removeItem('geminiApiKey');
+  sessionStorage.removeItem('geminiApiKey');
+  render();
+}
+
+
+let analyticsCharts={};
+function monthKey(d){return String(d||'').slice(0,7)}
+function addMonths(ym,delta){if(!ym)return'';const a=ym.split('-').map(Number),dt=new Date(a[0],a[1]-1+delta,1);return dt.toISOString().slice(0,7)}
+function getAllMonths(){return [...new Set(sanitizeVisitsList(visits).map(v=>monthKey(v.date)).filter(Boolean))].sort()}
+function clientMonthSummaryFor(mo){const list=sanitizeVisitsList(visits).filter(v=>monthKey(v.date)===mo),raw=list.filter(v=>!isFreeClientVisit(v)),free=list.filter(v=>isFreeClientVisit(v)),clients=group(raw),reviewers=clients.filter(c=>c.validVisits>=2),freeClients=group(free),freeEligible=freeClients.filter(c=>c.validVisits>=3),loss=reviewers.reduce((a,c)=>a+(c.periodLoss||0),0),avgVisits=reviewers.length?reviewers.reduce((a,c)=>a+c.validVisits,0)/reviewers.length:0;return{month:mo,clients,reviewers,freeClients,freeEligible,loss,avgVisits,totalClients:reviewers.length}}
+function deltaText(c,p,s=''){const d=(+c||0)-(+p||0),pct=p?d/p*100:0,cls=d>0?'up':d<0?'down':'flat',ar=d>0?'▲':d<0?'▼':'■';return `<span class="comp-delta ${cls}">${ar} ${fmt(d,1)}${s} (${fmt(pct,1)}%)</span>`}
+function buildAlerts(){const m=metrics(),a=[],low=m.reviewers.filter(c=>(c.periodLoss||0)<2),specs={};m.reviewers.forEach(c=>{let sp=c.specialist||'Unknown';if(!specs[sp])specs[sp]={specialist:sp,clients:0,loss:0,visits:0};specs[sp].clients++;specs[sp].loss+=+c.periodLoss||0;specs[sp].visits+=+c.validVisits||0});Object.values(specs).forEach(s=>{let al=s.clients?s.loss/s.clients:0,av=s.clients?s.visits/s.clients:0;if(s.clients>=2&&al<2)a.push({type:'critical',icon:'🔴',title:`${s.specialist}: نزول منخفض`,desc:`متوسط النزول ${fmt(al)} kg لكل عميل.`,tag:'Weight Loss'});if(s.clients>=2&&av<4)a.push({type:'warning',icon:'🟠',title:`${s.specialist}: استمرارية ضعيفة`,desc:`متوسط الزيارات الصحيحة ${fmt(av)} فقط.`,tag:'Retention'})});if(m.avgVisits<settings.targetAvgVisits)a.push({type:'warning',icon:'⚠️',title:'متوسط الزيارات أقل من المستهدف',desc:`المحقق ${fmt(m.avgVisits)} مقابل مستهدف ${settings.targetAvgVisits}.`,tag:'Visits'});if(low.length)a.push({type:'critical',icon:'📉',title:'عملاء نزولهم ضعيف',desc:`يوجد ${low.length} عميل/أخصائي نزولهم أقل من 2kg.`,tag:'Low Loss'});if(m.inactive.length)a.push({type:'warning',icon:'⏳',title:'عملاء منقطعون',desc:`يوجد ${m.inactive.length} عميل منقطع.`,tag:'Inactive'});if(!a.length)a.push({type:'success',icon:'✅',title:'لا توجد تنبيهات حرجة',desc:'الأداء الحالي لا يحتوي على مؤشرات خطورة واضحة.',tag:'Healthy'});return a}
+// يعرض التنبيهات الذكية: مشاكل زيارات، نزول منخفض، انقطاع، أو حالة جيدة.
+function renderAlertsPanel(){
+  const alerts=buildAlerts();
+  const m=metrics();
+  const criticalCount=alerts.filter(a=>a.type==='critical').length;
+  const warningCount=alerts.filter(a=>a.type==='warning').length;
+  const aiOpinion = criticalCount
+    ? `رأي الذكاء الاصطناعي: يوجد مؤشرات تحتاج تدخل سريع. الأولوية ليست زيادة عدد العملاء فقط، بل مراجعة الاستمرارية ومعدل النزول للحالات الضعيفة.`
+    : warningCount
+      ? `رأي الذكاء الاصطناعي: الأداء مقبول لكن يوجد فرص تحسين واضحة، خصوصًا في المتابعة وتقليل الانقطاع.`
+      : `رأي الذكاء الاصطناعي: الوضع العام مستقر، ويمكن التركيز الآن على رفع الجودة وتحسين النتائج الشهرية.`;
+
+  document.getElementById('alerts').innerHTML = `
+    <div class="analytics-hero">
+      <div>
+        <h2>🚨 Smart Alerts Center</h2>
+        <p>مركز التنبيهات الذكية يلتقط أهم المخاطر التشغيلية تلقائيًا من بيانات الزيارات، النزول، الانقطاع، والشهر المجاني.</p>
+        <div class="analytics-help">الهدف: معرفة أين يجب أن تتدخل فورًا بدل مراجعة الجداول يدويًا.</div>
+      </div>
+      <div class="ai-insight-grid" style="margin-top:0;grid-template-columns:repeat(2,1fr)">
+        <div class="insight-card"><div class="mini-label">Critical/Warning</div><div class="mini-value">${alerts.filter(a=>a.type!=='success').length}</div><div class="mini-note">تنبيهات تحتاج متابعة</div></div>
+        <div class="insight-card"><div class="mini-label">Inactive</div><div class="mini-value">${m.inactive.length}</div><div class="mini-note">عملاء منقطعون</div></div>
+      </div>
+    </div>
+
+    <div class="card chart-card section-gap">
+      <div class="table-head">
+        <h2>🤖 رأي الذكاء الاصطناعي المختصر</h2>
+        <button class="btn small blue" onclick="aiQuickPrompt&&aiQuickPrompt('anomalies');setActiveTab('aiassistant')">اسأل AI بتفصيل</button>
+      </div>
+      <div class="ai-opinion-box">
+        <div class="alert-icon">🤖</div>
+        <div>
+          <div class="alert-title">AI Operational Opinion</div>
+          <div class="alert-desc">${aiOpinion}</div>
+        </div>
+        <span class="alert-tag ${criticalCount?'critical':warningCount?'warning':'success'}">${criticalCount?'High Priority':warningCount?'Watch':'Healthy'}</span>
+      </div>
+    </div>
+
+    <div class="card chart-card section-gap">
+      <div class="table-head"><h2>قائمة التنبيهات</h2></div>
+      <div class="alert-list">
+        ${alerts.map(a=>`<div class="alert-box ${a.type}"><div class="alert-icon">${a.icon}</div><div><div class="alert-title">${a.title}</div><div class="alert-desc">${a.desc}</div></div><span class="alert-tag ${a.type}">${a.tag}</span></div>`).join('')}
+      </div>
+    </div>
+  `;
+}
+// يعرض مقارنة الشهر الحالي مع الشهر السابق ونفس الشهر من العام الماضي.
+function renderComparisonsPanel(){let months=getAllMonths(),cur=monthKey(toDate.value)||(months[months.length-1]||''),prev=addMonths(cur,-1),ly=addMonths(cur,-12),c=clientMonthSummaryFor(cur),p=clientMonthSummaryFor(prev),l=clientMonthSummaryFor(ly);document.getElementById('comparisons').innerHTML=`
+<div class="card" style="padding:16px;margin-bottom:15px">
+<h3>⚙️ التحكم في المقارنات</h3>
+<label>اختار الفترة:</label>
+<select id="comparisonMode" onchange="renderComparisonsPanel()">
+<option value="monthly">شهر بشهر</option>
+<option value="yearly">سنة بسنة</option>
+<option value="custom">مقارنة مخصصة</option>
+</select>
+
+<div style="margin-top:10px">
+<label>من:</label>
+<input type="month" id="compFrom">
+<label>إلى:</label>
+<input type="month" id="compTo">
+</div>
+</div>
+<div class="analytics-hero"><div><h2>📊 Comparisons</h2><p>مقارنة الشهر المختار بالشهر السابق ونفس الشهر السنة الماضية.</p></div><div class="insight-card"><div class="mini-label">Selected Month</div><div class="mini-value">${cur||'-'}</div><div class="mini-note">حسب تاريخ نهاية الفلتر</div></div></div><div class="analytics-grid three section-gap"><div class="insight-card"><div class="mini-label">Clients vs Previous</div><div class="mini-value">${c.totalClients}</div><div class="mini-note">${deltaText(c.totalClients,p.totalClients)}</div></div><div class="insight-card"><div class="mini-label">Loss vs Previous</div><div class="mini-value">${fmt(c.loss)}kg</div><div class="mini-note">${deltaText(c.loss,p.loss,' kg')}</div></div><div class="insight-card"><div class="mini-label">Avg Visits vs Previous</div><div class="mini-value">${fmt(c.avgVisits)}</div><div class="mini-note">${deltaText(c.avgVisits,p.avgVisits)}</div></div></div><div class="card chart-card section-gap"><div class="table-head"><h2>Comparison Chart</h2></div><canvas id="comparisonChart"></canvas></div>`;setTimeout(()=>drawComparisonChart(cur,prev,ly,c,p,l),50)}
+// يرسم تبويب التحليلات والرسوم البيانية الشهرية.
+function renderAnalyticsPanel(){
+  document.getElementById('analytics').innerHTML=`
+    <div class="analytics-hero">
+      <div><h2>📈 Charts Analytics</h2><p>شارتات حقيقية لعدد العملاء، النزول، متوسط الزيارات، والشهر المجاني عبر الشهور.</p></div>
+      <div class="insight-card"><div class="mini-label">Months in Data</div><div class="mini-value">${getAllMonths().length}</div><div class="mini-note">عدد الشهور المتاحة للتحليل</div></div>
+    </div>
+    <div class="analytics-grid two section-gap">
+      <div class="card chart-card"><div class="table-head"><h2>Monthly Clients</h2></div><canvas id="monthlyClientsChart"></canvas></div>
+      <div class="card chart-card"><div class="table-head"><h2>Monthly Loss KG</h2></div><canvas id="monthlyLossChart"></canvas></div>
+    </div>
+    <div class="analytics-grid two section-gap">
+      <div class="card chart-card"><div class="table-head"><h2>Avg Visits Trend</h2></div><canvas id="avgVisitsChart"></canvas></div>
+      <div class="card chart-card"><div class="table-head"><h2>Free Month Trend</h2></div><canvas id="freeMonthChart"></canvas></div>
+    </div>
+    <div class="card chart-card section-gap">
+      <div class="table-head"><h2>🔥 أداء الأخصائيين شهريًا</h2></div>
+      <p class="footer-note" style="margin-top:0">يعرض هذا الجدول أداء كل أخصائي في كل شهر حسب إجمالي الكيلوجرامات المخفضة، مع تمييز القوة والضعف بالألوان.</p>
+      <div class="heat-legend">
+        <span class="heat-cell heat-good">أداء قوي</span>
+        <span class="heat-cell heat-mid">متوسط</span>
+        <span class="heat-cell heat-bad">ضعيف</span>
+        <span class="heat-cell heat-empty">لا توجد بيانات</span>
+      </div>
+      <div id="specialistHeatmap" class="table-wrap" style="margin-top:12px"></div>
+    </div>
+  `;
+  setTimeout(drawAnalyticsCharts,50);
+}
+// يجمع مفاتيح العملاء الذين ظهروا في شهر معين لاستخدامه في Cohort.
+function visitMonthKeys(m){return new Set(sanitizeVisitsList(visits).filter(v=>monthKey(v.date)===m&&!isFreeClientVisit(v)).map(v=>visitGroupKey(v)))}
+// تحليل الاحتفاظ بالعملاء شهرياً: كم عميل يستمر بعد M0/M1/M2/M3.
+function renderCohortPanel(){
+  const months=getAllMonths();
+  const rows=months.map(mo=>{
+    const cohortClients=[...new Set(sanitizeVisitsList(visits).filter(v=>monthKey(v.date)===mo && !isFreeClientVisit(v)).map(v=>visitGroupKey(v)))];
+    const data=[0,1,2,3].map(offset=>{
+      const target=addMonths(mo,offset);
+      const active=new Set(sanitizeVisitsList(visits).filter(v=>monthKey(v.date)===target && !isFreeClientVisit(v)).map(v=>visitGroupKey(v)));
+      const retained=cohortClients.filter(k=>active.has(k)).length;
+      return cohortClients.length?retained/cohortClients.length*100:0;
+    });
+    return {mo,size:cohortClients.length,data};
+  });
+  document.getElementById('cohort').innerHTML=`
+    <div class="analytics-hero">
+      <div>
+        <h2>🧬 Cohort Analysis</h2>
+        <p>هذا التحليل يقيس استمرارية العملاء بمرور الوقت، من خلال تتبع كل مجموعة عملاء حسب شهر بداية تعاملهم.</p>
+        <ul class="analytics-help explain-list">
+          <li>M0 = نفس شهر البداية.</li>
+          <li>M1 = العملاء الذين عادوا في الشهر التالي.</li>
+          <li>M2 و M3 = قوة الاستمرارية على المدى الأطول.</li>
+          <li>كلما كانت النسبة أعلى في الشهور التالية، فهذا يدل على متابعة أقوى والتزام أفضل.</li>
+        </ul>
+      </div>
+      <div class="insight-card"><div class="mini-label">Cohorts</div><div class="mini-value">${rows.length}</div><div class="mini-note">عدد مجموعات العملاء المتاحة للتحليل</div></div>
+    </div>
+    <div class="card table-card section-gap"><div class="table-head"><h2>Retention Cohort Matrix</h2></div><div class="table-wrap"><table class="matrix-table"><thead><tr><th>Cohort Month</th><th>Size</th><th>M0</th><th>M1</th><th>M2</th><th>M3</th></tr></thead><tbody>
+      ${rows.map(r=>`<tr><td>${r.mo}</td><td>${r.size}</td>${r.data.map(x=>`<td><span class="heat-cell ${x>=60?'heat-good':x>=30?'heat-mid':'heat-bad'}">${fmt(x)}%</span></td>`).join('')}</tr>`).join('')}
+    </tbody></table></div></div>
+    <div class="card chart-card section-gap"><div class="table-head"><h2>متوسط استمرارية العملاء عبر الشهور</h2></div><canvas id="cohortChart"></canvas></div>
+  `;
+  setTimeout(()=>drawCohortChart(rows),50);
+}
+// يحدد أكبر نقطة سقوط في مراحل Drop-off.
+function findBiggestDrop(st){let b='-',mx=-1;for(let i=1;i<st.length;i++){let d=st[i-1].count-st[i].count;if(d>mx){mx=d;b=`${st[i-1].name} → ${st[i].name}`}}return b}
+// تحليل مراحل التساقط: من العملاء الكليين إلى المؤهلين والمثالي والتثبيت.
+function renderDropoffPanel(){
+  const all=group(sanitizeVisitsList(visits).filter(v=>!isFreeClientVisit(v)));
+  const stages=[
+    {name:'زيارة واحدة+', count:all.filter(c=>c.visits>=1).length},
+    {name:'زيارتان+', count:all.filter(c=>c.validVisits>=2).length},
+    {name:'3 زيارات+', count:all.filter(c=>c.validVisits>=3).length},
+    {name:'5 زيارات+', count:all.filter(c=>c.validVisits>=5).length},
+    {name:'نزول ≥ 5kg', count:all.filter(c=>c.periodLoss>=5).length},
+    {name:'BMI < 26', count:all.filter(c=>c.lastBmi!=null && c.lastBmi<26).length},
+  ];
+  const max=stages[0]?.count||1;
+  document.getElementById('dropoff').innerHTML=`
+    <div class="analytics-hero">
+      <div>
+        <h2>🧭 Drop-off Analysis</h2>
+        <p>هذا التحليل يوضح رحلة العميل خطوة بخطوة، ويحدد المرحلة التي نخسر فيها أكبر عدد من العملاء قبل الوصول للنتيجة.</p>
+        <ul class="analytics-help explain-list">
+          <li>لو الانخفاض كبير بعد أول زيارة → المشكلة في المتابعة الأولى.</li>
+          <li>لو الانخفاض بعد 3 زيارات → المشكلة في الالتزام أو جودة الخطة.</li>
+          <li>لو الانخفاض قبل نزول 5kg → المشكلة في فعالية البرنامج أو تكرار الزيارات.</li>
+        </ul>
+      </div>
+      <div class="insight-card">
+        <div class="mini-label">Biggest Drop</div>
+        <div class="mini-value" style="font-size:20px">${findBiggestDrop(stages)}</div>
+        <div class="mini-note">أكبر نقطة فقد في رحلة العميل</div>
+      </div>
+    </div>
+    <div class="card chart-card section-gap"><div class="table-head"><h2>Customer Journey Vertical Funnel</h2></div><canvas id="dropoffChart"></canvas></div>
+    <div class="card section-gap" style="padding:18px"><h2>تفصيل رحلة العميل</h2>
+      ${stages.map(s=>`<div class="timeline-row"><div class="timeline-label">${s.name}</div><div class="timeline-track"><div class="timeline-fill" style="width:${Math.min(100,s.count/max*100)}%"></div></div><b>${s.count}</b></div>`).join('')}
+    </div>
+  `;
+  setTimeout(()=>drawDropoffChart(stages),50);
+}
+// يرسم مقارنة مرئية بين الشهور باستخدام Chart.js.
+function drawComparisonChart(cur,prev,ly,c,p,l){let ctx=document.getElementById('comparisonChart');if(!ctx||typeof Chart==='undefined')return;analyticsCharts.comparison=new Chart(ctx,{type:'bar',data:{labels:[cur,prev,ly],datasets:[{label:'Clients',data:[c.totalClients,p.totalClients,l.totalClients]},{label:'Loss KG',data:[c.loss,p.loss,l.loss]}]},options:{responsive:true,plugins:{legend:{position:'bottom'}}}})}
+// يرسم كل الشارتات الرئيسية ويدمر القديم قبل الرسم حتى لا تتكرر الرسوم.
+function drawAnalyticsCharts(){Object.values(analyticsCharts).forEach(c=>{try{c.destroy()}catch(e){}});analyticsCharts={};let months=getAllMonths(),data=months.map(m=>clientMonthSummaryFor(m));function make(id,type,label,vals){let ctx=document.getElementById(id);if(!ctx||typeof Chart==='undefined')return;analyticsCharts[id]=new Chart(ctx,{type,data:{labels:months,datasets:[{label,data:vals,tension:.35}]},options:{responsive:true,plugins:{legend:{position:'bottom'}}}})}make('monthlyClientsChart','line','Clients',data.map(x=>x.totalClients));make('monthlyLossChart','bar','Loss KG',data.map(x=>+x.loss||0));make('avgVisitsChart','line','Avg Visits',data.map(x=>+x.avgVisits||0));make('freeMonthChart','bar','Free Eligible',data.map(x=>x.freeEligible.length));renderSpecialistHeatmap(months)}
+// يرسم Heatmap للأخصائيين حسب النزول الشهري.
+function renderSpecialistHeatmap(months){let specs=[...new Set(sanitizeVisitsList(visits).map(v=>cleanSpecialist(v.specialist)).filter(Boolean))].sort(),rows=specs.map(sp=>`<tr><td>${sp}</td>${months.map(m=>{let list=sanitizeVisitsList(visits).filter(v=>monthKey(v.date)===m&&cleanSpecialist(v.specialist)===sp&&!isFreeClientVisit(v)),cs=group(list).filter(c=>c.validVisits>=2),loss=cs.reduce((a,c)=>a+(c.periodLoss||0),0),cls=loss>=10?'heat-good':loss>=4?'heat-mid':loss>0?'heat-bad':'heat-empty';return `<td><span class="heat-cell ${cls}">${loss?fmt(loss)+'kg':'-'}</span></td>`}).join('')}</tr>`).join('');document.getElementById('specialistHeatmap').innerHTML=`<table class="matrix-table"><thead><tr><th>Specialist</th>${months.map(m=>`<th>${m}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`}
+// يرسم شارت متوسط Retention في Cohort.
+function drawCohortChart(rows){let ctx=document.getElementById('cohortChart');if(!ctx||typeof Chart==='undefined')return;let avg=[0,1,2,3].map(i=>{let v=rows.map(r=>r.data[i]).filter(x=>!isNaN(x));return v.length?v.reduce((a,b)=>a+b,0)/v.length:0});analyticsCharts.cohort=new Chart(ctx,{type:'line',data:{labels:['M0','M1','M2','M3'],datasets:[{label:'Avg Retention %',data:avg,tension:.35}]},options:{responsive:true,plugins:{legend:{position:'bottom'}},scales:{y:{min:0,max:100}}}})}
+// يرسم شارت مراحل التساقط Drop-off.
+function drawDropoffChart(stages){
+  const ctx=document.getElementById('dropoffChart'); if(!ctx||typeof Chart==='undefined')return;
+  if(analyticsCharts.dropoff){try{analyticsCharts.dropoff.destroy()}catch(e){}}
+  analyticsCharts.dropoff=new Chart(ctx,{
+    type:'bar',
+    data:{labels:stages.map(s=>s.name),datasets:[{label:'Clients',data:stages.map(s=>s.count)}]},
+    options:{
+      responsive:true,
+      plugins:{legend:{display:false}},
+      scales:{y:{beginAtZero:true}}
+    }
+  });
+}
+
+// يرسم شاشة الإعدادات والمعايير القابلة للتعديل.
+function renderSettings(){
+  const hasKey = !!getGeminiApiKey();
+  let html='<div class="card"><div class="table-head"><h2>الإعدادات والمعايير</h2><button class="btn" onclick="saveSettingsFromForm()">حفظ</button></div>';
+
+  html += '<div class="settings-grid">';
+  Object.keys(defaults).forEach(k=>{
+    html+=`<div class="field"><label>${k}</label><input id="set_${k}" type="number" step="0.01" value="${settings[k]}"></div>`;
+  });
+  html += '</div>';
+
+  html += `
+    <div style="padding:0 18px 18px">
+      <div class="card" style="padding:16px;background:#fbfdfc;box-shadow:none">
+        <h2 style="margin:0 0 12px">إعدادات الذكاء الاصطناعي Gemini</h2>
+        <p class="footer-note" style="margin-top:0">ضع Gemini API Key هنا مرة واحدة، وسيستخدمه تبويب AI Assistant تلقائيًا.</p>
+        <div class="settings-grid" style="padding:0;grid-template-columns:2fr 1fr 1fr">
+          <div class="field">
+            <label>Gemini API Key</label>
+            <input id="settingsGeminiKey" type="password" placeholder="${hasKey ? 'مفتاح محفوظ — اكتب مفتاح جديد للتغيير' : 'Enter Gemini API Key'}" value="">
+          </div>
+          <div class="field">
+            <label>الحالة</label>
+            <input type="text" readonly value="${hasKey ? 'محفوظ' : 'غير محفوظ'}">
+          </div>
+          <div class="field">
+            <label>إجراء</label>
+            <button class="btn" onclick="saveGeminiKeyFromSettings()">حفظ المفتاح</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+          <button class="btn small secondary" onclick="setActiveTab('aiassistant')">فتح AI Assistant</button>
+          <button class="btn small red" onclick="clearGeminiKeyFromSettings()">مسح المفتاح</button>
+        </div>
+        <p class="footer-note">تنبيه: حفظ المفتاح يتم داخل نفس المتصفح على الجهاز الحالي. لا تحفظه على جهاز مشترك.</p>
+      </div>
+    </div>
+  `;
+
+  html += '<div style="padding:0 18px 18px;display:flex;gap:8px"><button class="btn secondary" onclick="resetAll()">مسح كل البيانات</button><button class="btn amber" onclick="resetSettings()">إعادة المعايير الافتراضية</button></div></div>';
+  document.getElementById('settings').innerHTML=html;
+}
+// يحفظ قيم الإعدادات من الفورم ثم يعيد الحساب والرسم.
+function saveSettingsFromForm(){Object.keys(defaults).forEach(k=>settings[k]=Number(document.getElementById('set_'+k).value)); save(); render();}
+// يرجع الإعدادات للقيم الافتراضية.
+function resetSettings(){settings={...defaults}; save(); render();}
+// Reset كامل: يستخدم الأرشفة السحابية إن أمكن، ثم يمسح البيانات المحلية ويعيد الرسم.
+async function resetAll(){
+  if(confirm('سيتم مسح الذاكره تماما, هل انت متأكد')){
+    try{
+      if(typeof resetVisitsArchive === 'function'){
+        await resetVisitsArchive();
+      }else{
+        visits=[];
+        save();
+      }
+      visits=[];
+      localStorage.removeItem('nutriVisits');
+      render();
+    }catch(e){
+      alert('فشل تفريغ البيانات: ' + (e.message || e));
+    }
+  }
+}
+// حذف عميل كامل من البيانات حسب key الخاص به.
+function deleteClient(key){
+  if(confirm('حذف العميل بكل زياراته؟')){
+    if(String(key).includes('|')){
+      const parts=String(key).split('|');
+      const phoneKey=parts[0];
+      const specialist=parts.slice(1).join('|');
+      visits=visits.filter(v=>!(v.phoneKey===phoneKey && cleanSpecialist(v.specialist)===specialist));
+    }else{
+      visits=visits.filter(v=>v.phoneKey!==key);
+    }
+    refreshAfterDataChange();
+  }
+}
+document.getElementById('tabs').onclick=e=>{if(e.target.dataset.tab)setActiveTab(e.target.dataset.tab)};function setActiveTab(t){activeTab=t;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x.dataset.tab===t));document.querySelectorAll('.panel').forEach(x=>x.classList.toggle('active',x.id===t));}
+['fromDate','toDate','branchFilter','specialistFilter'].forEach(id=>document.addEventListener('change',e=>{if(e.target.id===id)render()}));
+document.getElementById('fileInput').addEventListener('change',async e=>{let file=e.target.files[0]; if(!file)return; let data=await file.arrayBuffer(); let rows=[]; if(file.name.toLowerCase().endsWith('.csv')){let txt=new TextDecoder().decode(data); rows=csvToRows(txt);} else {let wb=XLSX.read(data,{type:'array',cellDates:false}); let ws=wb.Sheets[wb.SheetNames[0]]; rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});} if(rows.length<2){alert('الملف فارغ');return;} pendingHeaders=rows[0].map(x=>String(x).trim()); pendingRows=rows.slice(1).map(r=>Object.fromEntries(pendingHeaders.map((h,i)=>[h,r[i]]))); openMapModal(); e.target.value='';});
+// تحويل ملف CSV بسيط إلى صفوف وأعمدة.
+function csvToRows(text){return text.trim().split(/\r?\n/).map(line=>line.split(',').map(x=>x.trim()));}
+// يحاول تخمين العمود المناسب لكل حقل بناءً على aliases.
+function guess(field){let al=aliases[field]||[]; let found=pendingHeaders.find(h=>al.some(a=>h.toLowerCase().includes(a.toLowerCase()))); return found||'';}
+// يفتح نافذة تعيين أعمدة ملف الاستيراد ويعرض معاينة أول 5 صفوف.
+function openMapModal(){let fields=['date','phone','id','name','specialist','branch','weight','height','visitType','isFree','program','products','notes']; document.getElementById('mapFields').innerHTML=fields.map(f=>`<div class="field"><label>${f}</label><select id="map_${f}"><option value="">-- غير موجود --</option>${pendingHeaders.map(h=>`<option value="${h}" ${guess(f)===h?'selected':''}>${h}</option>`).join('')}</select></div>`).join(''); let sample=pendingRows.slice(0,5); document.getElementById('preview').innerHTML='<table><thead><tr>'+pendingHeaders.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>'+sample.map(r=>'<tr>'+pendingHeaders.map(h=>`<td>${r[h]??''}</td>`).join('')+'</tr>').join('')+'</tbody></table>'; showModal('mapModal');}
+// يؤكد استيراد الملف: يقرأ الخريطة، ينظف البيانات، يستبعد 2222، يدمج الزيارات، ويحفظ.
+function confirmImport(){let map={}; ['date','phone','id','name','specialist','branch','weight','height','visitType','isFree','program','products','notes'].forEach(f=>map[f]=document.getElementById('map_'+f).value); if(!map.date||!map.phone||!map.weight){alert('التاريخ ورقم الهاتف والوزن مطلوبين');return;} let incoming=[]; pendingRows.forEach(r=>{let key=normPhone(r[map.phone]); let rawPhone=String(r[map.phone]||''); let rawId=String(r[map.id]||'').trim(); let date=parseDate(r[map.date]); let weight=num(r[map.weight]); if(!key||!date||!weight)return; if(isBlockedClientCode(rawPhone)||isBlockedClientCode(rawId)||isBlockedClientCode(key))return; incoming.push({date,phone:rawPhone,clientId:rawId,phoneKey:key,name:String(r[map.name]||'').trim(),specialist:String(r[map.specialist]||'').trim(),branch:String(r[map.branch]||'').trim(),weight,height:num(r[map.height]),visitType:String(r[map.visitType]||'').trim(),isFree:isFreeMonthCode(rawPhone)||isFreeMonthCode(rawId)||isFreeMonthCode(key)||String(r[map.isFree]||'').toLowerCase().includes('yes')||String(r[map.isFree]||'').includes('نعم')||String(r[map.isFree]||'').includes('مجاني'),program:String(r[map.program]||''),products:String(r[map.products]||''),notes:String(r[map.notes]||'')});});
+ incoming=sanitizeVisitsList(incoming);
+ let nameByKey={}; [...visits,...incoming].forEach(v=>{if(v.name&&v.name!=='Unknown')nameByKey[v.phoneKey]=v.name}); incoming=incoming.map(v=>({...v,name:v.name||nameByKey[v.phoneKey]||'Unknown'})); let merged=new Map(); visits=visits.filter(v=>!isBlockedClientVisit(v)); visits.forEach(v=>merged.set(v.phoneKey+'|'+v.specialist+'|'+v.date,v)); let added=0,updated=0; incoming.forEach(v=>{let k=v.phoneKey+'|'+v.specialist+'|'+v.date; if(merged.has(k)){let old=merged.get(k); let chosen=richness(v)>richness(old)?{...old,...v}:old; merged.set(k,chosen); updated++;}else{merged.set(k,v);added++;}}); visits=[...merged.values()].sort((a,b)=>a.date.localeCompare(b.date)); refreshAfterDataChange(); closeModal('mapModal'); alert(`تم الاستيراد: جديد ${added} / محدث أو مكرر ${updated}`);}
+// يقيس ثراء السجل بعدد الخانات الممتلئة، لاختيار النسخة الأغنى عند وجود تكرار.
+function richness(v){return Object.values(v).filter(x=>x!==''&&x!=null&&x!==false).length;}
+// إظهار نافذة منبثقة بإضافة class show.
+function showModal(id){document.getElementById(id).classList.add('show')} function closeModal(id){document.getElementById(id).classList.remove('show')}
+// تنزيل نموذج CSV جاهز يوضح الأعمدة المطلوبة.
+function downloadTemplate(){downloadCSV('template.csv',[{date:'2025-07-01',phone:'971501234567',id:'501234567',name:'Client Name',specialist:'Specialist',branch:'Branch',weight:90,height:170,visitType:'First',isFree:'No'},{date:'2025-07-01',phone:'0501234567',id:'333312345',name:'Free Month Client',specialist:'Specialist',branch:'Branch',weight:90,height:170,visitType:'First',isFree:'Yes'}]);}
+// فتح نافذة التصدير وتحديد الأعمدة المتاحة حسب نوع البيانات.
+function openExportModal(){let cols=Object.keys(exportData().rows[0]||{empty:''}); document.getElementById('exportColumns').innerHTML=cols.map(c=>`<label class="check-item"><input type="checkbox" checked value="${c}"> ${c}</label>`).join(''); showModal('exportModal');}
+// يحدد مصدر بيانات التصدير حسب التبويب أو الاختيار.
+function exportData(){let m=metrics(); let type=document.getElementById('exportType')?.value||'current'; if(type==='current')type=activeTab; let rows=[]; if(type==='clients'||type==='overview')rows=m.clients.map(flatClient); else if(type==='visits')rows=m.period; else if(type==='inactive')rows=m.inactive.map(flatClient); else if(type==='free')rows=m.free.map(flatClient); else if(type==='ideal')rows=m.ideal.map(flatClient); else if(type==='stabilized')rows=m.stable.map(flatClient); else if(type==='special')rows=[...m.ideal.map(flatClient),...m.stable.map(flatClient)]; else if(type==='scores')rows=totalScore(m).rows; else rows=m.clients.map(flatClient); return {rows};}
+// يحول كائن العميل المعقد إلى صف بسيط مناسب للتصدير CSV.
+function flatClient(c){return {name:c.name,phone:c.phone,branch:c.branch,specialist:c.specialist,height:c.height,visits:c.visits,validVisits:c.validVisits,firstDate:c.firstDate,lastDate:c.lastDate,firstWeight:c.firstWeight,minWeight:c.minWeight,maxWeight:c.maxWeight,lastWeight:c.lastWeight,lossKg:c.lossKg,periodLoss:c.periodLoss,criticalWeight:c.criticalWeight,weightClass:c.weightClass,lastBmi:c.lastBmi,freeEligible:c.validVisits>=3?'Yes':'No'};}
+// ينفذ التصدير حسب الأعمدة المختارة.
+function performExport(){let data=exportData().rows; let checked=[...document.querySelectorAll('#exportColumns input:checked')].map(x=>x.value); let out=data.map(r=>Object.fromEntries(checked.map(c=>[c,r[c]??'']))); downloadCSV('nutrition_export_'+activeTab+'.csv',out); closeModal('exportModal');}
+// إنشاء ملف CSV وتحميله مباشرة من المتصفح.
+function downloadCSV(name,rows){let cols=Object.keys(rows[0]||{}); let csv=[cols.join(',')].concat(rows.map(r=>cols.map(c=>`"${String(r[c]??'').replace(/"/g,'""')}"`).join(','))).join('\n'); let blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'}); let a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); URL.revokeObjectURL(a.href);}
+
+/* ===== AI Provider Hub Upgrade: طبقة مرنة لتوصيل مساعدين مختلفين =====
+   هذا الجزء يؤثر فقط على تبويب AI Assistant وطريقة الاتصال بالـ API، ولا يغير أي معادلات. */
+const AI_PROVIDER_CONFIGS={
+  gemini:{label:'Google Gemini',defaultModel:'gemini-2.5-flash',keyName:'geminiApiKey',endpoint:'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'},
+  openai:{label:'OpenAI',defaultModel:'gpt-4.1-mini',keyName:'openaiApiKey',endpoint:'https://api.openai.com/v1/chat/completions'},
+  anthropic:{label:'Claude / Anthropic',defaultModel:'claude-3-5-sonnet-latest',keyName:'anthropicApiKey',endpoint:'https://api.anthropic.com/v1/messages'},
+  openrouter:{label:'OpenRouter',defaultModel:'openai/gpt-4.1-mini',keyName:'openrouterApiKey',endpoint:'https://openrouter.ai/api/v1/chat/completions'},
+  custom:{label:'Custom Proxy / Any API',defaultModel:'',keyName:'customAiApiKey',endpoint:''}
+};
+
+// يقرأ إعدادات مزود الذكاء الاصطناعي من الجهاز.
+function getAiProviderSettings(){
+  return {
+    provider:localStorage.getItem('nutriAiProvider')||'gemini',
+    model:localStorage.getItem('nutriAiModel')||'',
+    endpoint:localStorage.getItem('nutriAiEndpoint')||'',
+    remember:localStorage.getItem('nutriAiRemember')==='true'
+  };
+}
+
+// يرجع إعدادات المزود الحالي.
+function getCurrentAiProviderConfig(){
+  const s=getAiProviderSettings();
+  return AI_PROVIDER_CONFIGS[s.provider]||AI_PROVIDER_CONFIGS.gemini;
+}
+
+// يقرأ مفتاح API من sessionStorage أو localStorage.
+function getAiProviderKey(provider){
+  const cfg=AI_PROVIDER_CONFIGS[provider]||AI_PROVIDER_CONFIGS.gemini;
+  return sessionStorage.getItem(cfg.keyName)||localStorage.getItem(cfg.keyName)||'';
+}
+
+// يحفظ اختيار المزود والموديل والمفتاح.
+function saveAiProviderSettings(){
+  const provider=document.getElementById('aiProviderSelect')?.value||'gemini';
+  const cfg=AI_PROVIDER_CONFIGS[provider]||AI_PROVIDER_CONFIGS.gemini;
+  const model=(document.getElementById('aiModelInput')?.value||cfg.defaultModel||'').trim();
+  const endpoint=(document.getElementById('aiEndpointInput')?.value||'').trim();
+  const key=(document.getElementById('aiProviderKey')?.value||'').trim();
+  const remember=!!document.getElementById('rememberAiKey')?.checked;
+
+  localStorage.setItem('nutriAiProvider',provider);
+  localStorage.setItem('nutriAiModel',model);
+  localStorage.setItem('nutriAiEndpoint',endpoint);
+  localStorage.setItem('nutriAiRemember',remember?'true':'false');
+
+  if(key && key!=='********'){
+    sessionStorage.setItem(cfg.keyName,key);
+    if(remember)localStorage.setItem(cfg.keyName,key);
+    else localStorage.removeItem(cfg.keyName);
+  }
+  renderAiAssistant(metrics());
+}
+
+// يمسح مفتاح المزود الحالي فقط.
+function clearAiProviderKey(){
+  const provider=document.getElementById('aiProviderSelect')?.value||getAiProviderSettings().provider;
+  const cfg=AI_PROVIDER_CONFIGS[provider]||AI_PROVIDER_CONFIGS.gemini;
+  sessionStorage.removeItem(cfg.keyName);
+  localStorage.removeItem(cfg.keyName);
+  renderAiAssistant(metrics());
+}
+
+// عند تغيير المزود، يملأ الموديل والـ Endpoint الافتراضيين.
+function onAiProviderChange(){
+  const provider=document.getElementById('aiProviderSelect')?.value||'gemini';
+  const cfg=AI_PROVIDER_CONFIGS[provider]||AI_PROVIDER_CONFIGS.gemini;
+  const model=document.getElementById('aiModelInput');
+  const endpoint=document.getElementById('aiEndpointInput');
+  if(model)model.value=cfg.defaultModel||'';
+  if(endpoint)endpoint.value=provider==='custom'?'':cfg.endpoint;
+}
+
+// توافق خلفي مع أسماء Gemini القديمة.
+function getGeminiApiKey(){return getAiProviderKey('gemini');}
+function setGeminiApiKey(){saveAiProviderSettings();}
+function clearGeminiApiKey(){clearAiProviderKey();}
+function saveGeminiKeyFromSettings(){saveAiProviderSettings();alert('تم حفظ إعدادات الذكاء الاصطناعي بنجاح');}
+function clearGeminiKeyFromSettings(){clearAiProviderKey();}
+
+// نص شخصية المساعد. تعديله يغير أسلوب الرد فقط.
+function buildAiSystemText(){
+  return `أنت مستشار إداري محترف داخل Dashboard تقييم أخصائيي التغذية.
+استخدم الأرقام الموجودة فقط داخل DATA JSON.
+ممنوع الرد بصيغة JSON أو code blocks.
+ابدأ بإجابة مباشرة، ثم وضح السبب، ثم توصيات عملية.
+اكتب بالعربية بأسلوب إداري واضح ومفيد لمدير منطقة ريتيل.`;
+}
+
+// يحول الداتا والسؤال إلى messages قياسية.
+function buildAiMessages(prompt){
+  return [
+    {role:'system',content:buildAiSystemText()},
+    {role:'user',content:'DATA JSON:\n'+JSON.stringify(buildAiDataContext())+'\n\nQUESTION:\n'+prompt+'\n\nصيغة الرد المطلوبة: عربي طبيعي، عناوين واضحة، بدون JSON.'}
+  ];
+}
+
+function parseChatCompletionResponse(json){
+  return json.choices?.[0]?.message?.content || json.choices?.[0]?.text || 'لم يتم استلام رد واضح.';
+}
+
+// اتصال Gemini.
+async function callGeminiProvider({key,model,prompt}){
+  const body={contents:[{role:'user',parts:[{text:buildAiSystemText()+'\n\nDATA JSON:\n'+JSON.stringify(buildAiDataContext())+'\n\nQUESTION:\n'+prompt+'\n\nاكتب إجابة عربية طبيعية بدون JSON.'}]}],generationConfig:{temperature:.35,topP:.9,maxOutputTokens:6000}};
+  const url=AI_PROVIDER_CONFIGS.gemini.endpoint.replace('{model}',encodeURIComponent(model||AI_PROVIDER_CONFIGS.gemini.defaultModel));
+  const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':key},body:JSON.stringify(body)});
+  const json=await res.json();
+  if(!res.ok)throw new Error(json.error?.message||'Gemini API error');
+  return json.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('\n')||'لم يتم استلام رد واضح.';
+}
+
+// اتصال OpenAI.
+async function callOpenAiProvider({key,model,prompt}){
+  const res=await fetch(AI_PROVIDER_CONFIGS.openai.endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model:model||AI_PROVIDER_CONFIGS.openai.defaultModel,messages:buildAiMessages(prompt),temperature:.35,max_tokens:6000})});
+  const json=await res.json();
+  if(!res.ok)throw new Error(json.error?.message||'OpenAI API error');
+  return parseChatCompletionResponse(json);
+}
+
+// اتصال Claude/Anthropic. لو المتصفح منع الطلب بسبب CORS، استخدم Custom Proxy.
+async function callAnthropicProvider({key,model,prompt}){
+  const messages=buildAiMessages(prompt);
+  const system=messages.find(m=>m.role==='system')?.content||'';
+  const user=messages.filter(m=>m.role!=='system').map(m=>({role:'user',content:m.content}));
+  const res=await fetch(AI_PROVIDER_CONFIGS.anthropic.endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'x-api-key':key,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:model||AI_PROVIDER_CONFIGS.anthropic.defaultModel,system,messages:user,max_tokens:6000,temperature:.35})});
+  const json=await res.json();
+  if(!res.ok)throw new Error(json.error?.message||'Anthropic API error');
+  return json.content?.map(x=>x.text||'').join('\n')||'لم يتم استلام رد واضح.';
+}
+
+// اتصال OpenRouter.
+async function callOpenRouterProvider({key,model,prompt}){
+  const res=await fetch(AI_PROVIDER_CONFIGS.openrouter.endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key,'HTTP-Referer':location.origin,'X-Title':'Nutrition Specialist Evaluation Dashboard'},body:JSON.stringify({model:model||AI_PROVIDER_CONFIGS.openrouter.defaultModel,messages:buildAiMessages(prompt),temperature:.35,max_tokens:6000})});
+  const json=await res.json();
+  if(!res.ok)throw new Error(json.error?.message||'OpenRouter API error');
+  return parseChatCompletionResponse(json);
+}
+
+// اتصال Custom Proxy. هذا أفضل اختيار أمنيًا لحماية مفاتيح API.
+async function callCustomProvider({key,model,prompt,endpoint}){
+  if(!endpoint)throw new Error('Custom endpoint is required');
+  const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':key?'Bearer '+key:''},body:JSON.stringify({model,prompt,messages:buildAiMessages(prompt),data:buildAiDataContext()})});
+  const json=await res.json();
+  if(!res.ok)throw new Error(json.error?.message||json.error||'Custom AI API error');
+  return json.answer||json.text||json.message||parseChatCompletionResponse(json);
+}
+
+// الراوتر الرئيسي الذي يختار المزود المناسب.
+async function callAiProvider(prompt){
+  const s=getAiProviderSettings(), provider=s.provider||'gemini', cfg=AI_PROVIDER_CONFIGS[provider]||AI_PROVIDER_CONFIGS.gemini;
+  const key=getAiProviderKey(provider), model=s.model||cfg.defaultModel, endpoint=s.endpoint||cfg.endpoint;
+  if(provider!=='custom'&&!key)throw new Error('API Key مطلوب لهذا المزود');
+  if(provider==='gemini')return callGeminiProvider({key,model,prompt});
+  if(provider==='openai')return callOpenAiProvider({key,model,prompt});
+  if(provider==='anthropic')return callAnthropicProvider({key,model,prompt});
+  if(provider==='openrouter')return callOpenRouterProvider({key,model,prompt});
+  return callCustomProvider({key,model,prompt,endpoint});
+}
+
+// يرسم واجهة AI Assistant الجديدة.
+function renderAiAssistant(m){
+  const score=totalScore(m), s=getAiProviderSettings(), cfg=AI_PROVIDER_CONFIGS[s.provider]||AI_PROVIDER_CONFIGS.gemini;
+  const key=getAiProviderKey(s.provider), model=s.model||cfg.defaultModel||'', endpoint=s.endpoint||cfg.endpoint||'';
+  const providerOptions=Object.entries(AI_PROVIDER_CONFIGS).map(([id,c])=>`<option value="${id}" ${id===s.provider?'selected':''}>${c.label}</option>`).join('');
+  const chat=aiChatHistory.length?aiChatHistory.map(x=>`<div class="ai-msg ${x.role==='user'?'ai-user':'ai-bot'}">${escapeHtml(x.text)}</div>`).join(''):`<div class="ai-msg ai-system">اختر مزود الذكاء الاصطناعي، اكتب API Key، ثم اسأل عن الأداء أو اطلب خطة تشغيل أو رسالة واتساب. المساعد يرى الداتا الحالية بعد الفلاتر.</div>`;
+  document.getElementById('aiassistant').innerHTML=`
+  <div class="ai-shell">
+    <div class="card ai-card">
+      <h2 style="margin:0 0 6px">AI Assistant Hub</h2>
+      <p class="ai-mini">يدعم Gemini / OpenAI / Claude / OpenRouter / Custom Proxy. الداتا المرسلة تشمل KPIs، العملاء، الزيارات، الشهر المجاني، المنقطعين، وتفصيل العلامات.</p>
+      <div class="ai-provider-bar">
+        <div class="field"><label>مزود الذكاء الاصطناعي</label><select id="aiProviderSelect" onchange="onAiProviderChange()">${providerOptions}</select></div>
+        <div class="field"><label>Model</label><input id="aiModelInput" value="${escapeHtml(model)}" placeholder="مثال: gpt-4.1-mini أو claude-3-5-sonnet-latest"></div>
+      </div>
+      <div class="field" style="margin-top:10px"><label>API Key</label><input id="aiProviderKey" type="password" value="${key?'********':''}" placeholder="Paste API Key"></div>
+      <div class="field" style="margin-top:10px"><label>Endpoint اختياري / Custom Proxy</label><input id="aiEndpointInput" value="${escapeHtml(endpoint)}" placeholder="اتركه كما هو أو ضع رابط Proxy خاص"></div>
+      <label class="ai-mini" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input id="rememberAiKey" type="checkbox" ${s.remember?'checked':''}> حفظ المفتاح على نفس الجهاز</label>
+      <div class="ai-provider-status"><span class="ai-provider-dot ${key||s.provider==='custom'?'ready':'missing'}"></span><span class="ai-mini">الحالة: ${key||s.provider==='custom'?'جاهز للاستخدام':'المفتاح غير محفوظ'}</span></div>
+      <div class="ai-actions"><button class="btn small" onclick="saveAiProviderSettings()">حفظ الإعدادات</button><button class="btn small secondary" onclick="clearAiProviderKey()">مسح المفتاح</button><button class="btn small red" onclick="clearAiChat()">مسح الشات</button></div>
+      <div class="ai-kpi-grid"><div class="ai-kpi"><span class="ai-mini">Score</span><br><b>${fmt(score.total,2)}</b></div><div class="ai-kpi"><span class="ai-mini">إجمالي النزول</span><br><b>${fmt(m.allKg)} kg</b></div><div class="ai-kpi"><span class="ai-mini">متوسط الزيارات</span><br><b>${fmt(m.avgVisits)}</b></div><div class="ai-kpi"><span class="ai-mini">Free Eligible</span><br><b>${m.freeEligible.length}</b></div></div>
+      <h3 style="margin:16px 0 8px">أوامر جاهزة</h3>
+      <div class="ai-actions"><button class="btn small secondary" onclick="aiQuickPrompt('executive')">ملخص تنفيذي</button><button class="btn small secondary" onclick="aiQuickPrompt('action')">خطة 7 أيام</button><button class="btn small secondary" onclick="aiQuickPrompt('ranking')">تحليل الأخصائيين</button><button class="btn small secondary" onclick="aiQuickPrompt('anomalies')">أخطاء الداتا</button><button class="btn small secondary" onclick="aiQuickPrompt('whatsapp')">رسالة واتساب</button></div>
+      <div class="ai-code-note" style="margin-top:14px">ملاحظة أمان: الأفضل استخدام Custom Proxy في بيئة العمل حتى لا يظهر API Key داخل المتصفح.</div>
+    </div>
+    <div class="card ai-card">
+      <div class="ai-chat" id="aiChatBox">${chat}</div>
+      <div class="ai-input-row"><textarea id="aiPrompt" class="ai-textarea" placeholder="اسأل المساعد..."></textarea><button class="btn" onclick="askSmartAi()">إرسال</button></div>
+    </div>
+  </div>`;
+  setTimeout(()=>{const box=document.getElementById('aiChatBox');if(box)box.scrollTop=box.scrollHeight;},50);
+}
+
+// دالة الإرسال الجديدة.
+async function askSmartAi(){
+  const prompt=document.getElementById('aiPrompt')?.value?.trim();
+  if(!prompt){alert('اكتب السؤال الأول');return;}
+  saveAiProviderSettings();
+  aiChatHistory.push({role:'user',text:prompt});
+  aiChatHistory.push({role:'model',text:'جاري التحليل عبر '+(getCurrentAiProviderConfig().label||'AI')+'...'});
+  localStorage.setItem('nutriAiChatHistory',JSON.stringify(aiChatHistory));
+  renderAiAssistant(metrics());
+  try{
+    const ans=await callAiProvider(prompt);
+    aiChatHistory[aiChatHistory.length-1]={role:'model',text:cleanAiAnswer(ans)};
+  }catch(e){
+    aiChatHistory[aiChatHistory.length-1]={role:'model',text:'حدث خطأ في مزود الذكاء الاصطناعي: '+(e.message||e)+'\n\nلو الخطأ CORS أو Browser policy استخدم Custom Proxy endpoint.'};
+  }
+  localStorage.setItem('nutriAiChatHistory',JSON.stringify(aiChatHistory));
+  renderAiAssistant(metrics());
+}
+async function askGeminiAi(){return askSmartAi();}
+
+// حذف زيارة واحدة. أضفناها كدالة عامة حتى تعمل أزرار الحذف.
+function deleteVisit(key,date){
+  if(confirm('حذف هذه الزيارة؟')){
+    if(String(key).includes('|')){
+      const parts=String(key).split('|'), phoneKey=parts[0], specialist=parts.slice(1).join('|');
+      visits=visits.filter(v=>!(v.phoneKey===phoneKey && cleanSpecialist(v.specialist)===specialist && v.date===date));
+    }else{
+      visits=visits.filter(v=>!(v.phoneKey===key&&v.date===date));
+    }
+    refreshAfterDataChange();
+    if(document.getElementById('searchPhone'))doSearch();
+  }
+}
+
+// شاشة الإعدادات المطورة.
+function renderSettings(){
+  const s=getAiProviderSettings(), cfg=AI_PROVIDER_CONFIGS[s.provider]||AI_PROVIDER_CONFIGS.gemini, key=getAiProviderKey(s.provider);
+  const providerOptions=Object.entries(AI_PROVIDER_CONFIGS).map(([id,c])=>`<option value="${id}" ${id===s.provider?'selected':''}>${c.label}</option>`).join('');
+  let html='<div class="card"><div class="table-head"><h2>الإعدادات والمعايير</h2><button class="btn" onclick="saveSettingsFromForm()">حفظ</button></div><div class="settings-grid">';
+  Object.keys(defaults).forEach(k=>{html+=`<div class="field"><label>${k}</label><input id="set_${k}" type="number" step="0.01" value="${settings[k]}"></div>`;});
+  html+='</div>';
+  html+=`<div style="padding:0 18px 18px"><div class="card" style="padding:18px;background:#fbfdfc;box-shadow:none"><h2 style="margin:0 0 12px">إعدادات AI Assistant Hub</h2><p class="footer-note" style="margin-top:0">اختر مزود الذكاء الاصطناعي واحفظ الموديل والمفتاح. يمكن استخدام Custom Proxy لحماية المفاتيح أو لتوصيل أي API آخر.</p><div class="settings-grid" style="padding:0;grid-template-columns:1fr 1fr 1.4fr"><div class="field"><label>Provider</label><select id="aiProviderSelect" onchange="onAiProviderChange()">${providerOptions}</select></div><div class="field"><label>Model</label><input id="aiModelInput" value="${escapeHtml(s.model||cfg.defaultModel||'')}"></div><div class="field"><label>Endpoint</label><input id="aiEndpointInput" value="${escapeHtml(s.endpoint||cfg.endpoint||'')}"></div><div class="field"><label>API Key</label><input id="aiProviderKey" type="password" placeholder="${key?'مفتاح محفوظ — اكتب مفتاح جديد للتغيير':'Enter API Key'}" value=""></div><div class="field"><label>الحالة</label><input type="text" readonly value="${key?'محفوظ':'غير محفوظ'}"></div><div class="field"><label>إجراء</label><button class="btn" onclick="saveAiProviderSettings()">حفظ إعدادات AI</button></div></div><label class="footer-note" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input id="rememberAiKey" type="checkbox" ${s.remember?'checked':''}> حفظ المفتاح على نفس الجهاز</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn small secondary" onclick="setActiveTab('aiassistant')">فتح AI Assistant</button><button class="btn small red" onclick="clearAiProviderKey()">مسح مفتاح المزود الحالي</button></div><p class="footer-note">تنبيه: لو تستخدم الجهاز مع أكثر من شخص، لا تحفظ API Key دائماً. الأفضل عملياً استخدام Custom Proxy.</p></div></div>`;
+  html+='<div style="padding:0 18px 18px;display:flex;gap:8px"><button class="btn secondary" onclick="resetAll()">مسح كل البيانات</button><button class="btn amber" onclick="resetSettings()">إعادة المعايير الافتراضية</button></div></div>';
+  document.getElementById('settings').innerHTML=html;
+}
+
+if(USER_PASSWORD){
+  const input=document.getElementById('loginPassword');
+  if(input) input.value=USER_PASSWORD;
+}
+setCloudStatus('سجل الدخول لتحميل بيانات النظام');
+</script>
+</body>
+</html>
