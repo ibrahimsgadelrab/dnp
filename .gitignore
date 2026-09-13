@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+.netlify
+coverage
+backups
+_old_obfuscated_reference
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
